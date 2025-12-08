@@ -1,0 +1,7 @@
+{
+  "name": "Plan & Prove",
+  "description": "A social goal-tracking platform where users plan objectives, verify progress with evidence, and challenge others.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
