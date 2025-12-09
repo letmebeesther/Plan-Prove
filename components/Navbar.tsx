@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Bell, Menu } from 'lucide-react';
+import { Search, Bell, Menu, Flame } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { useNavigate } from 'react-router-dom';
 
@@ -25,12 +25,12 @@ export function Navbar({ onMenuClick }: NavbarProps) {
             </button>
             <div
               onClick={() => navigate('/')}
-              className="flex items-center gap-2 cursor-pointer"
+              className="flex items-center gap-1.5 cursor-pointer group"
             >
-              <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center shadow-[0_2px_8px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.04)]">
-                <span className="text-white text-body-s font-semibold">P&P</span>
+              <div className="flex items-center justify-center w-8 h-8 rounded-xl transition-transform group-hover:scale-110">
+                <Flame className="w-7 h-7 text-primary-500 fill-primary-500" />
               </div>
-              <span className="text-gray-900 font-semibold hidden sm:block text-body-l">Plan & Prove</span>
+              <span className="text-gray-900 font-bold hidden sm:block text-xl tracking-tight group-hover:text-primary-600 transition-colors">Plan & Prove</span>
             </div>
           </div>
           
