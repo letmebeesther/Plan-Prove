@@ -1,95 +1,20 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Avatar } from '../components/Avatar';
 import { 
     ShieldCheck, Trophy, Target, Settings as SettingsIcon, Edit2, Calendar, 
     CheckCircle2, XCircle, TrendingUp, AlertTriangle, FileText, BarChart3, 
     Trash2, ExternalLink, UserPlus, UserMinus, Camera, MoreHorizontal, X, ArrowRight,
-    Star
+    Star, Watch
 } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { ProgressBar } from '../components/common/ProgressBar';
 import { Input } from '../components/common/Input';
 import { Plan, User, TrustScoreHistory, PlanAnalysis, ScrapItem, Challenge, MonthlyChallenge } from '../types';
+import { useAuth } from '../contexts/AuthContext';
+import { fetchMyActivePlans, fetchMyPastPlans, fetchMyJoinedChallenges, fetchMyScraps } from '../services/dbService';
 
-// --- Mock Data ---
-
-const currentUser: User = {
-    id: 'u1',
-    nickname: '성장하는탐험가',
-    email: 'explorer@planprove.com',
-    avatarUrl: 'https://picsum.photos/200/200?random=999',
-    trustScore: 92,
-    statusMessage: '꾸준함이 답이다! 🏃‍♂️📚 매일 1%씩 성장하기.',
-    followers: 142,
-    following: 56,
-    totalPlans: 12,
-    completedGoals: 8
-};
-
-const activePlans: Plan[] = [
-    {
-        id: 'p1',
-        title: '매일 아침 조깅 챌린지',
-        description: '30일 동안 매일 아침 5km 달리기',
-        category: '건강관리',
-        progress: 65,
-        startDate: '2023-10-01',
-        endDate: '2023-10-31',
-        subGoals: [],
-        author: currentUser,
-        growthRate: 15,
-        lastCertifiedAt: '2023-10-25',
-        daysLeft: 6
-    },
-    {
-        id: 'p2',
-        title: '스페인어 기초 정복',
-        description: '2달 안에 필수 단어 1000개 암기하기',
-        category: '어학',
-        progress: 30,
-        startDate: '2023-10-15',
-        endDate: '2023-12-15',
-        subGoals: [],
-        author: currentUser,
-        growthRate: 5,
-        lastCertifiedAt: '2023-10-24',
-        daysLeft: 51
-    }
-];
-
-const pastPlans: Plan[] = [
-    {
-        id: 'pp1',
-        title: '30일 독서 습관 만들기',
-        description: '매일 30분 책 읽기',
-        category: '독서',
-        progress: 100,
-        startDate: '2023-09-01',
-        endDate: '2023-09-30',
-        subGoals: [],
-        author: currentUser,
-        finalAchievementRate: 100,
-        isSuccess: true,
-        hasRetrospective: true
-    },
-    {
-        id: 'pp2',
-        title: '주 3회 수영하기',
-        description: '체력 증진을 위한 수영',
-        category: '운동',
-        progress: 45,
-        startDate: '2023-08-01',
-        endDate: '2023-08-31',
-        subGoals: [],
-        author: currentUser,
-        finalAchievementRate: 45,
-        isSuccess: false,
-        failureReason: '잦은 야근으로 인한 시간 부족',
-        hasRetrospective: false
-    }
-];
-
+// Mock Data for static parts
 const trustHistory: TrustScoreHistory[] = [
     { id: 't1', date: '2023.10.25', type: 'CERTIFICATION', change: 2, reason: '연속 7일 인증 달성 (AC)', balance: 92 },
     { id: 't2', date: '2023.10.24', type: 'EVALUATION', change: 1, reason: '상호 평가 우수 (UP)', balance: 90 },
@@ -97,27 +22,9 @@ const trustHistory: TrustScoreHistory[] = [
     { id: 't4', date: '2023.10.15', type: 'COMMUNITY', change: 5, reason: '이달의 우수 활동자 선정', balance: 92 },
 ];
 
-const scrapItems: ScrapItem[] = [
-    { id: 's1', type: 'PLAN', title: '파이썬 데이터 분석 마스터', content: '데이터 분석가가 되기 위한 3개월 로드맵', originalId: 'op1', savedAt: '2023.10.20', category: '커리어' },
-    { id: 's2', type: 'POST', title: '미라클 모닝 100일 후기', content: '삶이 어떻게 변했는지 공유합니다.', originalId: 'post1', savedAt: '2023.10.22' },
-];
-
-const followers: User[] = [
-    { id: 'f1', nickname: 'RunnerHigh', avatarUrl: 'https://picsum.photos/200/200?random=10', trustScore: 88, statusMessage: '달리기는 인생이다' },
-    { id: 'f2', nickname: 'CodeNinja', avatarUrl: 'https://picsum.photos/200/200?random=11', trustScore: 95, statusMessage: '코딩으로 세상을 바꾼다' },
-];
-
-const joinedChallenges: Challenge[] = [
-    {
-        id: 'c1',
-        title: '미라클 모닝 5AM',
-        category: '생활루틴',
-        growthRate: 15,
-        myAchievementRate: 85,
-        myLastCertifiedAt: '오늘 아침',
-        imageUrl: 'https://picsum.photos/200/200?random=30',
-        description: '', statusMessage: '', tags: [], isPublic: true, createdAt: '', host: currentUser, coHosts: [], participantCount: 120, avgAchievement: 0, retentionRate: 0, avgTrustScore: 0, stabilityIndex: 0
-    }
+const followersMock: User[] = [
+    { id: 'f1', nickname: 'RunnerHigh', avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=runner', trustScore: 88, statusMessage: '달리기는 인생이다' },
+    { id: 'f2', nickname: 'CodeNinja', avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=coding', trustScore: 95, statusMessage: '코딩으로 세상을 바꾼다' },
 ];
 
 const joinedMonthlyChallenges: MonthlyChallenge[] = [
@@ -157,23 +64,63 @@ type TabType = 'PLANS' | 'CHALLENGE' | 'SCRAPS' | 'SOCIAL';
 type SubTabType = 'ACTIVE' | 'PAST' | 'TOGETHER' | 'MISC' | 'FOLLOWER' | 'FOLLOWING';
 
 export function MyPage() {
+    const { currentUser } = useAuth();
     const [activeTab, setActiveTab] = useState<TabType>('PLANS');
     const [subTab, setSubTab] = useState<SubTabType>('ACTIVE');
     
+    // Real Data State
+    const [activePlans, setActivePlans] = useState<Plan[]>([]);
+    const [pastPlans, setPastPlans] = useState<Plan[]>([]);
+    const [joinedChallenges, setJoinedChallenges] = useState<Challenge[]>([]);
+    const [scraps, setScraps] = useState<ScrapItem[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
     // Modals
     const [showEditProfile, setShowEditProfile] = useState(false);
     const [showTrustScore, setShowTrustScore] = useState(false);
     const [showAnalysis, setShowAnalysis] = useState<Plan | null>(null);
 
     // Edit Profile State
-    const [editNickname, setEditNickname] = useState(currentUser.nickname);
-    const [editStatus, setEditStatus] = useState(currentUser.statusMessage);
+    const [editNickname, setEditNickname] = useState('');
+    const [editStatus, setEditStatus] = useState('');
+
+    useEffect(() => {
+        if (currentUser) {
+            setEditNickname(currentUser.nickname);
+            setEditStatus(currentUser.statusMessage || '');
+            loadMyData();
+        }
+    }, [currentUser]);
+
+    const loadMyData = async () => {
+        if (!currentUser) return;
+        setIsLoading(true);
+        try {
+            const active = await fetchMyActivePlans(currentUser.id);
+            setActivePlans(active);
+            
+            const past = await fetchMyPastPlans(currentUser.id);
+            setPastPlans(past);
+            
+            const challenges = await fetchMyJoinedChallenges(currentUser.id);
+            setJoinedChallenges(challenges);
+            
+            const myScraps = await fetchMyScraps(currentUser.id);
+            setScraps(myScraps);
+        } catch (e) {
+            console.error("Failed to load MyPage data", e);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     const handleSaveProfile = () => {
-        // Logic to update profile
+        // Logic to update profile would go here (updateDoc in dbService)
         setShowEditProfile(false);
-        alert('프로필이 수정되었습니다.');
+        alert('프로필이 수정되었습니다. (DB 반영은 미구현)');
     };
+
+    if (!currentUser) return <div className="p-10 text-center">로그인이 필요합니다.</div>;
 
     return (
         <div className="max-w-4xl mx-auto space-y-6 pb-20 animate-fade-in">
@@ -204,11 +151,18 @@ export function MyPage() {
                     
                     <div className="text-center sm:text-left space-y-2 flex-1">
                         <div>
-                            <h1 className="text-2xl font-bold text-gray-900">{currentUser.nickname}</h1>
+                            <div className="flex items-center justify-center sm:justify-start gap-2">
+                                <h1 className="text-2xl font-bold text-gray-900">{currentUser.nickname}</h1>
+                                {currentUser.hasWearable && (
+                                    <div className="bg-green-100 p-1 rounded-full text-green-600" title="웨어러블 기기 연동됨">
+                                        <Watch className="w-3.5 h-3.5" />
+                                    </div>
+                                )}
+                            </div>
                             <p className="text-xs text-gray-400">{currentUser.email}</p>
                         </div>
                         <p className="text-gray-500 max-w-md bg-gray-50 px-3 py-1.5 rounded-lg inline-block text-sm">
-                            {currentUser.statusMessage}
+                            {currentUser.statusMessage || "상태 메시지를 입력해주세요."}
                         </p>
                         
                         <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 pt-2">
@@ -282,22 +236,26 @@ export function MyPage() {
                             {/* Active Plans (FR-244 ~ FR-250) */}
                             {subTab === 'ACTIVE' && (
                                 <div className="grid gap-4">
-                                    {activePlans.map(plan => (
+                                    {isLoading ? <div className="text-center py-4">로딩 중...</div> : activePlans.length === 0 ? (
+                                        <div className="text-center py-10 text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                                            진행 중인 계획이 없습니다.
+                                        </div>
+                                    ) : activePlans.map(plan => (
                                         <div key={plan.id} className="border border-gray-100 rounded-2xl p-5 hover:border-primary-200 hover:shadow-md transition-all cursor-pointer group">
                                             <div className="flex justify-between items-start mb-2">
                                                 <span className="px-2 py-0.5 bg-primary-50 text-primary-600 text-xs font-bold rounded">{plan.category}</span>
                                                 <span className="text-xs font-medium text-gray-400">D-{plan.daysLeft}</span>
                                             </div>
                                             <h3 className="font-bold text-lg text-gray-900 mb-1 group-hover:text-primary-600 transition-colors">{plan.title}</h3>
-                                            <p className="text-sm text-gray-500 mb-4">{plan.description}</p>
+                                            <p className="text-sm text-gray-500 mb-4 line-clamp-2">{plan.description}</p>
                                             
                                             <div className="space-y-2">
                                                 <div className="flex justify-between text-xs font-bold text-gray-600">
                                                     <span>진행률 {plan.progress}%</span>
-                                                    <span className="text-green-600">성장 +{plan.growthRate}%</span>
+                                                    <span className="text-green-600">성장 +{plan.growthRate || 0}%</span>
                                                 </div>
                                                 <ProgressBar progress={plan.progress} className="h-2" />
-                                                <div className="text-right text-xs text-gray-400">마지막 인증: {plan.lastCertifiedAt}</div>
+                                                <div className="text-right text-xs text-gray-400">마지막 인증: {plan.lastCertifiedAt || '-'}</div>
                                             </div>
                                         </div>
                                     ))}
@@ -307,7 +265,11 @@ export function MyPage() {
                             {/* Past Plans (FR-251 ~ FR-256) */}
                             {subTab === 'PAST' && (
                                 <div className="grid gap-4">
-                                    {pastPlans.map(plan => (
+                                    {isLoading ? <div className="text-center py-4">로딩 중...</div> : pastPlans.length === 0 ? (
+                                        <div className="text-center py-10 text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                                            지난 계획이 없습니다.
+                                        </div>
+                                    ) : pastPlans.map(plan => (
                                         <div key={plan.id} className="border border-gray-100 rounded-2xl p-5 flex flex-col md:flex-row items-center gap-6">
                                             <div className="flex-1 w-full">
                                                 <div className="flex items-center gap-2 mb-1">
@@ -319,8 +281,8 @@ export function MyPage() {
                                                     <span className="text-xs text-gray-400">{plan.startDate} ~ {plan.endDate}</span>
                                                 </div>
                                                 <h3 className="font-bold text-lg text-gray-900">{plan.title}</h3>
-                                                <p className="text-sm text-gray-500 mt-1">최종 달성률: <span className="font-bold text-gray-900">{plan.finalAchievementRate}%</span></p>
-                                                {!plan.isSuccess && <p className="text-xs text-red-500 mt-1">사유: {plan.failureReason}</p>}
+                                                <p className="text-sm text-gray-500 mt-1">최종 달성률: <span className="font-bold text-gray-900">{plan.finalAchievementRate || plan.progress}%</span></p>
+                                                {!plan.isSuccess && <p className="text-xs text-red-500 mt-1">사유: {plan.failureReason || '기간 만료'}</p>}
                                             </div>
                                             
                                             <div className="flex gap-2 w-full md:w-auto">
@@ -348,13 +310,17 @@ export function MyPage() {
                         <div>
                              <div className="flex gap-2 mb-6 p-1 bg-gray-50 rounded-xl w-fit">
                                 <button onClick={() => setSubTab('TOGETHER')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${subTab === 'TOGETHER' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>함께 도전하기</button>
-                                <button onClick={() => setSubTab('MISC')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${subTab === 'MISC' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>이모저모</button>
+                                <button onClick={() => setSubTab('MISC')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${subTab === 'MISC' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>이 달의 챌린지</button>
                             </div>
 
                             {/* Together Challenges (FR-279 ~ FR-285) */}
                             {subTab === 'TOGETHER' && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {joinedChallenges.map(c => (
+                                    {isLoading ? <div className="text-center py-4 col-span-2">로딩 중...</div> : joinedChallenges.length === 0 ? (
+                                        <div className="col-span-2 text-center py-10 text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                                            참여 중인 챌린지가 없습니다. 새로운 도전을 시작해보세요!
+                                        </div>
+                                    ) : joinedChallenges.map(c => (
                                         <div key={c.id} className="border border-gray-100 rounded-2xl overflow-hidden hover:shadow-lg transition-all group cursor-pointer">
                                             <div className="h-24 bg-gray-100 relative">
                                                 <img src={c.imageUrl} alt={c.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
@@ -409,7 +375,9 @@ export function MyPage() {
                     {/* --- 10.7 Scraps Tab (FR-267 ~ FR-271) --- */}
                     {activeTab === 'SCRAPS' && (
                         <div className="space-y-4">
-                            {scrapItems.map(item => (
+                            {isLoading ? <div className="text-center py-4">로딩 중...</div> : scraps.length === 0 ? (
+                                <div className="text-center py-10 text-gray-400">스크랩한 항목이 없습니다.</div>
+                            ) : scraps.map(item => (
                                 <div key={item.id} className="border border-gray-100 rounded-2xl p-4 hover:border-primary-200 transition-colors group relative bg-white">
                                     <button className="absolute top-4 right-4 text-gray-300 hover:text-red-500 p-1"><Trash2 className="w-4 h-4" /></button>
                                     <div className="flex items-center gap-2 mb-2">
@@ -440,7 +408,8 @@ export function MyPage() {
                             </div>
 
                             <div className="grid gap-4">
-                                {followers.map(user => (
+                                {/* Use Mock for now as Follow system not in DB yet */}
+                                {followersMock.map(user => (
                                     <div key={user.id} className="border border-gray-100 rounded-2xl p-4 flex items-center justify-between">
                                         <div className="flex items-center gap-4 cursor-pointer">
                                             <Avatar src={user.avatarUrl} />
@@ -582,7 +551,7 @@ export function MyPage() {
                         <div className="grid grid-cols-2 gap-4 mb-6">
                             <div className="bg-gray-50 p-4 rounded-xl text-center">
                                 <div className="text-xs text-gray-500">최종 달성률</div>
-                                <div className={`text-2xl font-bold ${showAnalysis.isSuccess ? 'text-green-600' : 'text-red-500'}`}>{showAnalysis.finalAchievementRate}%</div>
+                                <div className={`text-2xl font-bold ${showAnalysis.isSuccess ? 'text-green-600' : 'text-red-500'}`}>{showAnalysis.finalAchievementRate || showAnalysis.progress}%</div>
                             </div>
                              <div className="bg-gray-50 p-4 rounded-xl text-center">
                                 <div className="text-xs text-gray-500">결과</div>

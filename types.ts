@@ -10,16 +10,32 @@ export interface User {
   following?: number;
   totalPlans?: number; // FR-240
   completedGoals?: number; // FR-240
+  hasWearable?: boolean; // New: Tracks if user connected a device
+  isAdmin?: boolean; // FR-DEV
 }
 
 export interface Evidence {
   id: string;
-  type: 'PHOTO' | 'VIDEO' | 'TEXT' | 'APP_CAPTURE';
+  type: 'PHOTO' | 'VIDEO' | 'TEXT' | 'APP_CAPTURE' | 'BIOMETRIC' | 'EMAIL' | 'API'; // Added EMAIL, API
   url?: string; // For photo/video
   content?: string; // For text/description
+  fileHash?: string; // SHA-256 Hash
   status: 'APPROVED' | 'WARNING' | 'PENDING' | 'REJECTED'; // FR-053 (AI Status)
   createdAt: string;
   feedback?: string; // AI Feedback
+  
+  // Specific fields for new types
+  verifiedEmail?: string; // For EMAIL type
+  apiProvider?: string; // For API type (e.g. "Q-Net", "ETS")
+  apiReferenceId?: string; // For API type (e.g. License #)
+}
+
+export interface EvidenceOption {
+  type: 'PHOTO' | 'VIDEO' | 'TEXT' | 'APP_CAPTURE' | 'BIOMETRIC' | 'EMAIL' | 'API'; // Added EMAIL, API
+  description: string; // e.g. "Take a photo of your running shoes"
+  timeMetadata?: string; // e.g. "07:00 AM"
+  biometricData?: string; // e.g. "Heart rate > 120"
+  locationMetadata?: string; // e.g. "Gym", "Library"
 }
 
 export interface SubGoal {
@@ -28,6 +44,24 @@ export interface SubGoal {
   description: string;
   status: 'pending' | 'completed' | 'failed';
   dueDate: string;
+  dueTime?: string;
+  
+  // New fields for FR-031, FR-032, FR-033
+  startDate?: string;
+  difficulty?: 'EASY' | 'MEDIUM' | 'HARD';
+  
+  // Selected Evidence Settings
+  evidenceTypes?: ('PHOTO' | 'VIDEO' | 'TEXT' | 'APP_CAPTURE' | 'BIOMETRIC' | 'EMAIL' | 'API')[]; // Changed to Array
+  evidenceDescription?: string; // The specific verification instruction selected by user
+  
+  // AI Generated Options to choose from
+  evidenceOptions?: EvidenceOption[];
+
+  // Legacy/Fallback Metadata fields
+  exampleTimeMetadata?: string; 
+  exampleBiometricData?: string; 
+  exampleLocationMetadata?: string; // New: Target location for verification
+
   evidences?: Evidence[]; // FR-047
   failureReason?: string; // FR-054
 }
@@ -40,8 +74,10 @@ export interface Plan {
   progress: number;
   startDate: string;
   endDate: string;
+  executionTime?: string; // New: Preferred daily time for the plan
   subGoals: SubGoal[];
   author: User;
+  authorId?: string; // Added for explicit linking
   imageUrl?: string;
   tags?: string[]; // FR-038
   createdAt?: string; // FR-039
@@ -60,6 +96,7 @@ export interface Plan {
   retrospectiveContent?: string; // FR-056
   
   isPublic?: boolean;
+  likes?: number; // Added for popularity sorting
 }
 
 export interface PlanAnalysis {
@@ -81,6 +118,7 @@ export interface TrustScoreHistory {
 
 export interface ScrapItem {
   id: string;
+  userId?: string;
   type: 'PLAN' | 'SUBGOAL' | 'POST';
   title: string;
   content: string;
@@ -104,6 +142,8 @@ export interface Certification {
   imageUrl?: string;
   description: string;
   relatedGoalTitle: string;
+  planId?: string; // Added to link feed to plan
+  challengeId?: string; // Optional link to challenge
   createdAt: string;
   likes: number;
   comments: number;
@@ -138,6 +178,7 @@ export interface Challenge {
   
   // Stats
   participantCount: number;
+  participantIds?: string[]; // For filtering "My Challenges"
   growthRate: number; // 그룹 성장률
   avgAchievement: number; // 평균 달성률
   retentionRate: number; // 유지율

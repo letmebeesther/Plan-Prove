@@ -9,6 +9,8 @@ import {
   signOut, 
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  setPersistence,
+  browserLocalPersistence,
   User as FirebaseUser 
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -37,7 +39,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Ensure persistence is set to LOCAL (survives browser restart)
+    const initAuth = async () => {
+      try {
+        await setPersistence(auth, browserLocalPersistence);
+      } catch (e) {
+        console.error("Auth Persistence Error:", e);
+      }
+    };
+    initAuth();
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      console.log("Auth State Changed:", firebaseUser ? "User Logged In" : "User Logged Out", firebaseUser?.uid);
       try {
         if (firebaseUser) {
           // Check if user exists in Firestore
@@ -49,7 +62,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (userSnapshot.exists()) {
               setCurrentUser({ id: firebaseUser.uid, ...userSnapshot.data() } as User);
             } else {
-              // Create profile if doesn't exist
+              // Create profile if doesn't exist (e.g. first social login)
               const newUser: User = {
                 id: firebaseUser.uid,
                 nickname: firebaseUser.displayName || '익명 탐험가',
@@ -90,39 +103,59 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signInWithGoogle = async () => {
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    try {
+        const provider = new GoogleAuthProvider();
+        await signInWithPopup(auth, provider);
+    } catch (error) {
+        console.error("Google Sign In Error:", error);
+        throw error;
+    }
   };
 
   const signInWithFacebook = async () => {
-    const provider = new FacebookAuthProvider();
-    await signInWithPopup(auth, provider);
+    try {
+        const provider = new FacebookAuthProvider();
+        await signInWithPopup(auth, provider);
+    } catch (error) {
+        console.error("Facebook Sign In Error:", error);
+        throw error;
+    }
   };
 
   const signupWithEmail = async (email: string, password: string, nickname: string) => {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const firebaseUser = userCredential.user;
-    
-    // Create User Profile in Firestore
-    const newUser: User = {
-      id: firebaseUser.uid,
-      nickname: nickname,
-      email: email,
-      avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${firebaseUser.uid}`,
-      trustScore: 50,
-      statusMessage: '새로운 도전을 시작합니다!',
-      followers: 0,
-      following: 0,
-      totalPlans: 0,
-      completedGoals: 0
-    };
-    
-    await setDoc(doc(db, 'users', firebaseUser.uid), newUser);
-    setCurrentUser(newUser);
+    try {
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const firebaseUser = userCredential.user;
+        
+        // Create User Profile in Firestore
+        const newUser: User = {
+          id: firebaseUser.uid,
+          nickname: nickname,
+          email: email,
+          avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${firebaseUser.uid}`,
+          trustScore: 50,
+          statusMessage: '새로운 도전을 시작합니다!',
+          followers: 0,
+          following: 0,
+          totalPlans: 0,
+          completedGoals: 0
+        };
+        
+        await setDoc(doc(db, 'users', firebaseUser.uid), newUser);
+        // Current user will be updated by onAuthStateChanged
+    } catch (error) {
+        console.error("Email Signup Error:", error);
+        throw error;
+    }
   };
 
   const loginWithEmail = async (email: string, password: string) => {
-    await signInWithEmailAndPassword(auth, email, password);
+    try {
+        await signInWithEmailAndPassword(auth, email, password);
+    } catch (error) {
+        console.error("Email Login Error:", error);
+        throw error;
+    }
   };
 
   const logout = async () => {
@@ -139,7 +172,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       loginWithEmail,
       logout 
     }}>
-      {children}
+      {!loading && children}
     </AuthContext.Provider>
   );
 };

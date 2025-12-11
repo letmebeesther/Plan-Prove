@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
@@ -21,8 +20,6 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 function AppRoutes() {
   const { loading } = useAuth();
 
-  console.log('AppRoutes rendering, loading:', loading);
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -43,29 +40,32 @@ function AppRoutes() {
         <Route path="/intro" element={<IntroPage />} />
         
         {/* Protected/App Routes - With Layout */}
-        <Route element={<Layout />}>
-          <Route path="/" element={<Home />} />
-          <Route path="/new-plan" element={<NewPlan />} />
-          <Route path="/plan/:id" element={<PlanDetail />} />
-          <Route path="/challenges" element={<Challenges />} />
-          <Route path="/challenges/:id" element={<ChallengeDetail />} />
-          <Route path="/new-challenge" element={<NewChallenge />} />
-          <Route path="/trending" element={<Trending />} />
-          <Route path="/hall-of-fame" element={<HallOfFame />} />
-          <Route path="/miscellaneous" element={<Miscellaneous />} />
-          <Route path="/miscellaneous/:id" element={<MonthlyChallengeDetail />} />
-          <Route path="/my-page" element={<MyPage />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/search" element={<Challenges />} /> {/* Placeholder */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
+        <Route path="/*" element={
+          <Layout>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/new-plan" element={<NewPlan />} />
+              <Route path="/plan/:id" element={<PlanDetail />} />
+              <Route path="/challenges" element={<Challenges />} />
+              <Route path="/challenges/:id" element={<ChallengeDetail />} />
+              <Route path="/new-challenge" element={<NewChallenge />} />
+              <Route path="/trending" element={<Trending />} />
+              <Route path="/hall-of-fame" element={<HallOfFame />} />
+              <Route path="/miscellaneous" element={<Miscellaneous />} />
+              <Route path="/miscellaneous/:id" element={<MonthlyChallengeDetail />} />
+              <Route path="/my-page" element={<MyPage />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/search" element={<Challenges />} /> {/* Placeholder */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Layout>
+        } />
       </Routes>
     </HashRouter>
   );
 }
 
 function App() {
-  console.log('App component rendering');
   return (
     <AuthProvider>
       <AppRoutes />

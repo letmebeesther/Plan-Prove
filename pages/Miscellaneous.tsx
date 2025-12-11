@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Calendar, Users, ArrowRight, Search, Clock, Award, Filter } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -123,8 +122,8 @@ export function Miscellaneous() {
     <div className="space-y-6 max-w-5xl mx-auto pb-20">
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
          <div>
-             <h1 className="text-2xl font-bold text-gray-900">이모저모</h1>
-             <p className="text-gray-500 mt-1">특별한 이벤트 챌린지와 지난 기록들을 모아봤어요.</p>
+             <h1 className="text-2xl font-bold text-gray-900">이 달의 챌린지</h1>
+             <p className="text-gray-500 mt-1">매월 새로운 테마로 진행되는 특별한 도전에 참여해보세요.</p>
          </div>
          <div className="flex bg-gray-100 p-1 rounded-xl">
              <button 

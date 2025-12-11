@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Calendar, Users, Zap, Image as ImageIcon, MessageCircle, Heart, Bookmark, Flag, MoreHorizontal, Send, Star, X, ChevronRight, ExternalLink, RefreshCw, CheckCircle2, ThumbsUp, ThumbsDown, Camera, Type as TypeIcon, CheckSquare, History, Trophy } from 'lucide-react';
@@ -107,7 +106,7 @@ const initialPosts: ForumPost[] = [
 ];
 
 export function MonthlyChallengeDetail() {
-  const { id } = useParams();
+  const { id } = useParams<{id: string}>();
   const [activeTab, setActiveTab] = useState<'POPULAR' | 'RECENT'>('POPULAR');
   const [newPostContent, setNewPostContent] = useState('');
   

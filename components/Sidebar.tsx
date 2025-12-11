@@ -13,7 +13,7 @@ const menuItems = [
   { icon: Users, label: '함께 도전하기', path: '/challenges' },
   { icon: TrendingUp, label: '인기 도전', path: '/trending' },
   { icon: Trophy, label: '명예의 전당', path: '/hall-of-fame' },
-  { icon: Grid, label: '이모저모', path: '/miscellaneous' },
+  { icon: Grid, label: '이 달의 챌린지', path: '/miscellaneous' },
   { icon: User, label: '마이페이지', path: '/my-page' },
   { icon: Settings, label: '설정', path: '/settings' },
 ];

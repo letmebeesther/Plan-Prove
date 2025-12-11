@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
@@ -12,10 +11,10 @@ import { Avatar } from '../components/Avatar';
 import { Button } from '../components/common/Button';
 import { ProgressBar } from '../components/common/ProgressBar';
 import { Challenge, Participant, ChatMessage, Certification, Notice, ChatRoom, Plan } from '../types';
+import { useAuth } from '../contexts/AuthContext';
+import { subscribeToChat, sendChatMessage } from '../services/chatService';
 
-// --- Mock Data ---
-
-const currentUser = { id: 'me', nickname: '나', avatarUrl: 'https://picsum.photos/200/200?random=999', trustScore: 88 };
+// --- Mock Data (Ideally fetch from DB) ---
 
 const mockChallenge: Challenge = {
     id: 'c1',
@@ -58,34 +57,30 @@ const mockFeed: Certification[] = [
     { id: 'f3', user: mockParticipants[3].user, description: '오늘은 텍스트로 인증합니다. 앱이 오류가 나네요 ㅠㅠ', relatedGoalTitle: '기상 미션', createdAt: '1시간 전', likes: 8, comments: 4, reactions: {'💪': 2} },
 ];
 
-const mockChatMessages: ChatMessage[] = [
-    { id: 'm1', user: mockParticipants[1].user, content: '좋은 아침입니다! ☀️', type: 'TEXT', createdAt: '오전 5:01', reactions: {'👋': 2} },
-    { id: 'm2', user: mockParticipants[0].user, content: '모두 화이팅하세요!', type: 'TEXT', createdAt: '오전 5:05', reactions: {'🔥': 5} },
-];
-
 const mockChatRooms: ChatRoom[] = [
     { id: 'cr1', type: 'DIRECT', participants: [mockParticipants[1].user], lastMessage: '안녕하세요!', lastMessageTime: '어제', unreadCount: 0 },
     { id: 'cr2', type: 'GROUP', name: '서울 지역 모임', participants: [mockParticipants[1].user, mockParticipants[2].user], lastMessage: '이번 주 정모 어때요?', lastMessageTime: '10분 전', unreadCount: 3 },
 ];
 
 const myPlans: Plan[] = [
-    { id: 'p1', title: '나의 미라클 모닝', category: '생활루틴', progress: 0, description: '', startDate: '', endDate: '', subGoals: [], author: currentUser },
-    { id: 'p2', title: '영어 단어 암기', category: '어학', progress: 50, description: '', startDate: '', endDate: '', subGoals: [], author: currentUser },
+    { id: 'p1', title: '나의 미라클 모닝', category: '생활루틴', progress: 0, description: '', startDate: '', endDate: '', subGoals: [], author: { id: 'me', nickname: '나', avatarUrl: '', trustScore: 0 } },
+    { id: 'p2', title: '영어 단어 암기', category: '어학', progress: 50, description: '', startDate: '', endDate: '', subGoals: [], author: { id: 'me', nickname: '나', avatarUrl: '', trustScore: 0 } },
 ];
 
 type TabType = 'HOME' | 'FEED' | 'CHAT' | 'MEMBERS' | 'CHATLIST';
 
 export function ChallengeDetail() {
-  const { id } = useParams();
+  const { id } = useParams<{id: string}>();
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
+  
   const [activeTab, setActiveTab] = useState<TabType>('HOME');
-  const [isJoined, setIsJoined] = useState(false); // Mock Join State
+  const [isJoined, setIsJoined] = useState(false); 
   const [isBookmarked, setIsBookmarked] = useState(false);
   
   // Modals State
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showLeaveModal, setShowLeaveModal] = useState(false);
-  const [showReportModal, setShowReportModal] = useState(false);
   const [showParticipantModal, setShowParticipantModal] = useState<Participant | null>(null);
   const [showFeedDetailModal, setShowFeedDetailModal] = useState<Certification | null>(null);
   const [showNoticeModal, setShowNoticeModal] = useState<Notice | null>(null);
@@ -93,7 +88,7 @@ export function ChallengeDetail() {
 
   // Chat State
   const [chatInput, setChatInput] = useState('');
-  const [messages, setMessages] = useState(mockChatMessages);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
   // Feed Filter
@@ -106,6 +101,30 @@ export function ChallengeDetail() {
   // Ranking State
   const [showAllRankings, setShowAllRankings] = useState(false);
 
+  // --- Chat Subscription (Realtime Database) ---
+  useEffect(() => {
+    if (!id || activeTab !== 'CHAT') return;
+
+    const unsubscribe = subscribeToChat(id, (rtMessages) => {
+      const uiMessages: ChatMessage[] = rtMessages.map(m => ({
+        id: m.id,
+        user: { 
+          id: m.userId, 
+          nickname: m.userNickname, 
+          avatarUrl: m.userAvatarUrl, 
+          trustScore: 0 // RTDB doesn't store updated trust score, simplified for chat
+        } as any,
+        content: m.content,
+        type: m.type,
+        createdAt: new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        reactions: {} 
+      }));
+      setMessages(uiMessages);
+    });
+
+    return () => unsubscribe();
+  }, [id, activeTab]);
+
   // Scroll to bottom on new chat
   useEffect(() => {
     if (chatScrollRef.current) {
@@ -115,32 +134,30 @@ export function ChallengeDetail() {
 
   // Handlers
   const handleJoin = (planId?: string) => {
-      if (!planId) return; // In real app, link planId
+      if (!planId) return; 
       setIsJoined(true);
       setShowJoinModal(false);
       alert(`"${planId}" 계획과 함께 도전에 참여했습니다! 🎉`);
-      setActiveTab('HOME'); // Ensure user lands on Home to see ranking
+      setActiveTab('HOME'); 
   };
 
   const handleLeave = () => {
       setIsJoined(false);
       setShowLeaveModal(false);
-      navigate('/challenges'); // Or stay and show join button
+      navigate('/challenges'); 
   };
 
-  const handleSendMessage = (e?: React.FormEvent) => {
+  const handleSendMessage = async (e?: React.FormEvent) => {
       e?.preventDefault();
-      if (!chatInput.trim()) return;
-      const newMsg: ChatMessage = {
-          id: Date.now().toString(),
-          user: currentUser,
-          content: chatInput,
-          type: 'TEXT',
-          createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          reactions: {}
-      };
-      setMessages([...messages, newMsg]);
-      setChatInput('');
+      if (!chatInput.trim() || !currentUser || !id) return;
+      
+      try {
+        await sendChatMessage(id, currentUser, chatInput);
+        setChatInput('');
+      } catch (error) {
+        console.error("Failed to send message", error);
+        alert("메시지 전송에 실패했습니다.");
+      }
   };
 
   const handleCopyLink = () => {
@@ -149,14 +166,13 @@ export function ChallengeDetail() {
   };
 
   // Logic for Comprehensive Ranking (FR-210-5 ~ FR-210-10)
-  // Total Score = (Achievement * 0.5) + (Growth * 0.3) + (Trust * 0.2)
   const calculateTotalScore = (p: Participant) => {
       return (p.achievementRate * 0.5) + (p.growthRate * 0.3) + (p.user.trustScore * 0.2);
   };
 
   const rankingParticipants = [...mockParticipants]
       .map(p => ({ ...p, totalScore: calculateTotalScore(p) }))
-      .sort((a, b) => b.totalScore - a.totalScore); // Sort by Total Score Desc
+      .sort((a, b) => b.totalScore - a.totalScore); 
 
   // --- Render Functions ---
 
@@ -167,8 +183,8 @@ export function ChallengeDetail() {
   };
 
   return (
-    <div className="pb-20 max-w-5xl mx-auto bg-gray-50 min-h-screen">
-        {/* --- Header (FR-164 ~ FR-182) --- */}
+    <div className="pb-20 max-w-5xl mx-auto bg-gray-50 min-h-screen animate-fade-in">
+        {/* --- Header --- */}
         <div className="relative h-64 md:h-80 bg-gray-900 group">
             <img 
                 src={mockChallenge.imageUrl} 
@@ -177,7 +193,6 @@ export function ChallengeDetail() {
                 onClick={() => setShowFullImage(mockChallenge.imageUrl)}
             />
             
-            {/* Top Actions (FR-168) */}
             <div className="absolute top-4 right-4 flex gap-2">
                 <button onClick={handleCopyLink} className="p-2 bg-black/30 backdrop-blur-md rounded-full text-white hover:bg-black/50 transition-colors">
                     <Share2 className="w-5 h-5" />
@@ -223,9 +238,8 @@ export function ChallengeDetail() {
             </div>
         </div>
 
-        {/* --- Sticky Stats & Notice (FR-183 ~ FR-197) --- */}
+        {/* --- Sticky Stats & Notice --- */}
         <div className="sticky top-14 z-20 bg-white shadow-sm border-b border-gray-100">
-             {/* Notices */}
             {mockChallenge.notices && mockChallenge.notices.length > 0 && (
                 <div className="bg-primary-50 px-4 py-2 flex items-center justify-between text-sm">
                     <div className="flex items-center gap-2 overflow-hidden">
@@ -242,7 +256,7 @@ export function ChallengeDetail() {
             )}
         </div>
 
-        {/* --- Tabs (FR-219 ~ FR-224) --- */}
+        {/* --- Tabs --- */}
         <div className="bg-white px-4 border-b border-gray-200">
             <div className="flex gap-6 overflow-x-auto no-scrollbar">
                 {[
@@ -273,7 +287,7 @@ export function ChallengeDetail() {
             {/* 1. HOME TAB */}
             {activeTab === 'HOME' && (
                 <div className="space-y-6 animate-fade-in">
-                    {/* Dashboard (FR-183 ~ FR-191) */}
+                    {/* Dashboard */}
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                          {[
                              { label: '그룹 성장률', value: `+${mockChallenge.growthRate}%`, icon: TrendingUp, color: 'text-green-600', tooltip: '지난 7일간 달성률 증가폭' },
@@ -302,7 +316,7 @@ export function ChallengeDetail() {
                         <p className="text-gray-700 leading-relaxed whitespace-pre-line">{mockChallenge.description}</p>
                     </div>
 
-                    {/* Comprehensive Ranking (FR-210-1 ~ FR-210-10) */}
+                    {/* Comprehensive Ranking */}
                     <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 relative overflow-hidden">
                         <div className="flex items-center justify-between mb-4">
                             <h3 className="font-bold text-lg text-gray-900 flex items-center gap-2">
@@ -326,7 +340,6 @@ export function ChallengeDetail() {
                         <div className={`space-y-3 ${!isJoined ? 'filter blur-sm select-none opacity-50' : ''}`}>
                             {rankingParticipants.slice(0, (!isJoined || !showAllRankings) ? 5 : undefined).map((p, idx) => {
                                 const rank = idx + 1;
-                                // Simulating current user (me) at index 4 (Rank 5)
                                 const isMe = isJoined && idx === 4; 
                                 return (
                                     <div key={p.user.id} className={`flex items-center gap-4 p-3 rounded-xl transition-colors ${isMe ? 'bg-primary-50 border border-primary-100' : 'hover:bg-gray-50'}`}>
@@ -352,7 +365,6 @@ export function ChallengeDetail() {
                             })}
                         </div>
 
-                        {/* View All / Collapse Button */}
                         {isJoined && rankingParticipants.length > 5 && (
                             <button 
                                 onClick={() => setShowAllRankings(!showAllRankings)}
@@ -374,10 +386,9 @@ export function ChallengeDetail() {
                 </div>
             )}
 
-            {/* 2. FEED TAB (FR-243 ~ FR-261) */}
+            {/* 2. FEED TAB */}
             {activeTab === 'FEED' && (
                 <div className="space-y-4 animate-fade-in">
-                    {/* Filter */}
                     <div className="flex gap-2 mb-4">
                         {['ALL', 'PHOTO', 'TEXT'].map(f => (
                             <button 
@@ -423,7 +434,7 @@ export function ChallengeDetail() {
                 </div>
             )}
 
-            {/* 3. OPEN CHAT TAB (FR-225 ~ FR-242) */}
+            {/* 3. OPEN CHAT TAB (RTDB Integration) */}
             {activeTab === 'CHAT' && (
                 <div className="bg-white rounded-2xl border border-gray-200 shadow-sm h-[600px] flex flex-col animate-fade-in relative">
                     {!isJoined && (
@@ -447,34 +458,30 @@ export function ChallengeDetail() {
 
                     {/* Chat Messages */}
                     <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-gray-200" ref={chatScrollRef}>
-                         {messages.map(msg => (
-                             <div key={msg.id} className={`flex gap-3 ${msg.user.id === currentUser.id ? 'flex-row-reverse' : ''}`}>
-                                 {msg.user.id !== currentUser.id && <Avatar src={msg.user.avatarUrl} size="sm" />}
-                                 <div className={`max-w-[70%] ${msg.user.id === currentUser.id ? 'items-end' : 'items-start'} flex flex-col`}>
-                                     {msg.user.id !== currentUser.id && <span className="text-xs text-gray-500 mb-1 ml-1">{msg.user.nickname}</span>}
-                                     <div className={`p-3 rounded-2xl text-sm relative group ${
-                                         msg.user.id === currentUser.id 
-                                         ? 'bg-primary-500 text-white rounded-tr-none' 
-                                         : 'bg-gray-100 text-gray-800 rounded-tl-none'
-                                     }`}>
-                                         {msg.content}
-                                         {/* Reactions */}
-                                         {Object.keys(msg.reactions).length > 0 && (
-                                             <div className="absolute -bottom-3 right-0 bg-white shadow-sm border border-gray-100 rounded-full px-1.5 py-0.5 text-[10px] flex items-center gap-0.5 text-gray-600">
-                                                 {Object.entries(msg.reactions).map(([emoji, count]) => (
-                                                     <span key={emoji}>{emoji} {count}</span>
-                                                 ))}
-                                             </div>
-                                         )}
-                                         {/* Message Actions */}
-                                         <button className="hidden group-hover:block absolute top-0 -right-8 p-1 text-gray-400 hover:text-gray-600">
-                                             <Smile className="w-4 h-4" />
-                                         </button>
+                         {messages.map(msg => {
+                             const isMyMessage = msg.user.id === currentUser?.id;
+                             return (
+                                 <div key={msg.id} className={`flex gap-3 ${isMyMessage ? 'flex-row-reverse' : ''}`}>
+                                     {!isMyMessage && <Avatar src={msg.user.avatarUrl} size="sm" />}
+                                     <div className={`max-w-[70%] ${isMyMessage ? 'items-end' : 'items-start'} flex flex-col`}>
+                                         {!isMyMessage && <span className="text-xs text-gray-500 mb-1 ml-1">{msg.user.nickname}</span>}
+                                         <div className={`p-3 rounded-2xl text-sm relative group break-all ${
+                                             isMyMessage 
+                                             ? 'bg-primary-500 text-white rounded-tr-none' 
+                                             : 'bg-gray-100 text-gray-800 rounded-tl-none'
+                                         }`}>
+                                             {msg.content}
+                                         </div>
+                                         <span className="text-[10px] text-gray-300 mt-1 px-1">{msg.createdAt}</span>
                                      </div>
-                                     <span className="text-[10px] text-gray-300 mt-1 px-1">{msg.createdAt}</span>
                                  </div>
+                             );
+                         })}
+                         {messages.length === 0 && (
+                             <div className="text-center py-10 text-gray-400 text-sm">
+                                 아직 대화가 없습니다. 첫 메시지를 보내보세요!
                              </div>
-                         ))}
+                         )}
                     </div>
 
                     {/* Input Area */}
@@ -499,7 +506,7 @@ export function ChallengeDetail() {
                 </div>
             )}
 
-            {/* 4. CHAT LIST TAB (FR-262 ~ FR-269) */}
+            {/* 4. CHAT LIST TAB */}
             {activeTab === 'CHATLIST' && (
                 <div className="space-y-4 animate-fade-in">
                     <div className="flex justify-between items-center mb-2">
@@ -544,7 +551,7 @@ export function ChallengeDetail() {
                 </div>
             )}
 
-            {/* 5. MEMBERS TAB (FR-198 ~ FR-218) */}
+            {/* 5. MEMBERS TAB */}
             {activeTab === 'MEMBERS' && (
                  <div className="space-y-4 animate-fade-in">
                     <div className="flex flex-col sm:flex-row justify-between gap-4">
@@ -608,7 +615,7 @@ export function ChallengeDetail() {
             )}
         </div>
 
-        {/* --- Footer / Leave Action (FR-167) --- */}
+        {/* --- Footer / Leave Action --- */}
         {isJoined && (
             <div className="mt-12 text-center border-t border-gray-200 pt-8 pb-8">
                 <button onClick={() => setShowLeaveModal(true)} className="text-gray-400 hover:text-red-500 text-sm font-medium flex items-center justify-center gap-1 mx-auto transition-colors">
@@ -620,7 +627,7 @@ export function ChallengeDetail() {
 
         {/* --- Modals --- */}
 
-        {/* 1. Join Modal (FR-286 ~ FR-293) */}
+        {/* Join Modal */}
         {showJoinModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-fade-in">
                 <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
@@ -646,7 +653,7 @@ export function ChallengeDetail() {
             </div>
         )}
 
-        {/* 2. Leave Modal (FR-295 ~ FR-301) */}
+        {/* Leave Modal */}
         {showLeaveModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-fade-in">
                 <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl text-center">
@@ -664,7 +671,7 @@ export function ChallengeDetail() {
             </div>
         )}
 
-        {/* 3. Participant Detail Modal (FR-211 ~ FR-218) */}
+        {/* Participant Detail Modal */}
         {showParticipantModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-fade-in" onClick={() => setShowParticipantModal(null)}>
                 <div className="bg-white rounded-2xl max-w-sm w-full overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -708,7 +715,7 @@ export function ChallengeDetail() {
             </div>
         )}
 
-        {/* 4. Notice Modal (FR-194) */}
+        {/* Notice Modal */}
         {showNoticeModal && (
              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-fade-in" onClick={() => setShowNoticeModal(null)}>
                 <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl relative" onClick={e => e.stopPropagation()}>
@@ -729,7 +736,7 @@ export function ChallengeDetail() {
              </div>
         )}
 
-        {/* 5. Full Image Modal (FR-165, FR-256) */}
+        {/* Full Image Modal */}
         {showFullImage && (
             <div className="fixed inset-0 z-[60] bg-black flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowFullImage(null)}>
                 <button className="absolute top-4 right-4 text-white p-2 bg-white/20 rounded-full hover:bg-white/30"><X className="w-6 h-6" /></button>

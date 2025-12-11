@@ -23,3 +23,21 @@ export const uploadImage = async (file: File, folder: string): Promise<string> =
     throw error;
   }
 };
+
+/**
+ * Calculates the SHA-256 hash of a file for duplicate/fraud detection.
+ * @param file The file object
+ * @returns Promise<string> The hex string of the hash
+ */
+export const calculateFileHash = async (file: File): Promise<string> => {
+  try {
+    const buffer = await file.arrayBuffer();
+    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex;
+  } catch (error) {
+    console.error("Error calculating file hash:", error);
+    return `error-hash-${Date.now()}`;
+  }
+};

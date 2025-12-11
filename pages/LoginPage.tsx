@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Mail, Lock, Eye, EyeOff, Flame, Facebook, User, ArrowRight, AlertCircle } from 'lucide-react';
 import { Button } from '../components/common/Button';
@@ -27,6 +26,7 @@ export function LoginPage() {
   
   useEffect(() => {
     if (currentUser) {
+      console.log("User already logged in, redirecting to Home");
       navigate('/');
     }
   }, [currentUser, navigate]);
@@ -50,12 +50,13 @@ export function LoginPage() {
     
     if (code === 'auth/unauthorized-domain') {
       msg = '[도메인 승인 필요] 현재 도메인이 Firebase 승인 목록에 없습니다.';
-      // Force alert for this specific error to ensure user sees it
-      alert(`[Firebase 설정 필요]\n현재 도메인(${window.location.hostname})이 승인되지 않았습니다.\n\nFirebase Console > Authentication > Settings > Authorized Domains 에 도메인을 추가해주세요.`);
+      const domainMsg = `[Firebase 설정 필요]\n현재 도메인(${window.location.hostname})이 승인되지 않았습니다.\n\nFirebase Console > Authentication > Settings > Authorized Domains 에 도메인을 추가해주세요.`;
+      alert(domainMsg);
     } else if (code === 'auth/popup-closed-by-user') {
       msg = '로그인이 취소되었습니다.';
     } else if (code === 'auth/operation-not-allowed') {
-      msg = 'Firebase 콘솔에서 해당 로그인 방식이 활성화되지 않았습니다.';
+      msg = 'Firebase 콘솔에서 해당 로그인 방식(이메일/구글 등)이 활성화되지 않았습니다.';
+      alert(msg);
     } else if (code === 'auth/email-already-in-use') {
       msg = '이미 사용 중인 이메일입니다.';
     } else if (code === 'auth/invalid-email') {
@@ -64,6 +65,8 @@ export function LoginPage() {
       msg = '비밀번호는 6자 이상이어야 합니다.';
     } else if (code === 'auth/user-not-found' || code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
       msg = '이메일 또는 비밀번호가 올바르지 않습니다.';
+    } else if (code === 'auth/network-request-failed') {
+      msg = '네트워크 연결을 확인해주세요.';
     }
     
     setError(msg);
@@ -71,6 +74,8 @@ export function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("Submit clicked", { isSignup, email });
+    
     setError('');
     setErrorCode('');
     setIsLoading(true);
@@ -83,9 +88,11 @@ export function LoginPage() {
         if (nickname.length < 2) {
           throw new Error('닉네임은 2글자 이상이어야 합니다.');
         }
+        console.log("Attempting Signup...");
         await signupWithEmail(email, password, nickname);
         // AuthContext will handle redirection via useEffect
       } else {
+        console.log("Attempting Login...");
         await loginWithEmail(email, password);
       }
     } catch (err: any) {
@@ -96,6 +103,7 @@ export function LoginPage() {
   };
 
   const handleGoogleLogin = async () => {
+    console.log("Google Login Clicked");
     setError('');
     setErrorCode('');
     try {
@@ -109,6 +117,7 @@ export function LoginPage() {
   };
 
   const handleFacebookLogin = async () => {
+    console.log("Facebook Login Clicked");
     setError('');
     setErrorCode('');
     try {

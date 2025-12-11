@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Trophy, Users, CheckCircle2, Star, Shield, Crown, Medal, TrendingUp, Calendar, Award, Zap, Activity, Target } from 'lucide-react';
 import { Avatar } from '../components/Avatar';
 import { ProgressBar } from '../components/common/ProgressBar';
+import { useNavigate } from 'react-router-dom';
 
 type TabType = 'BEST' | 'CHALLENGE' | 'CATEGORY' | 'TRUST' | 'ACHIEVEMENT';
 type TimeFilter = 'WEEKLY' | 'MONTHLY' | 'QUARTERLY';
@@ -19,7 +20,8 @@ const bestPlans = [
     goalScore: 95,
     trustScore: 99,
     date: '2023.10.20',
-    category: '커리어스킬'
+    category: '커리어스킬',
+    planId: null // Mock data placeholder, real data from DB will have this
   },
   {
     id: 2,
@@ -31,7 +33,8 @@ const bestPlans = [
     goalScore: 92,
     trustScore: 95,
     date: '2023.10.21',
-    category: '운동'
+    category: '운동',
+    planId: null
   },
   {
     id: 3,
@@ -43,7 +46,8 @@ const bestPlans = [
     goalScore: 90,
     trustScore: 93,
     date: '2023.10.22',
-    category: '어학'
+    category: '어학',
+    planId: null
   }
 ];
 
@@ -107,6 +111,7 @@ const categories = [
 ];
 
 export function HallOfFame() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabType>('BEST');
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('WEEKLY');
   const [selectedCategory, setSelectedCategory] = useState('운동');
@@ -187,7 +192,15 @@ export function HallOfFame() {
 
             <div className="grid gap-4">
               {bestPlans.map((plan) => (
-                <div key={plan.id} className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row gap-6 items-center">
+                <div 
+                    key={plan.id} 
+                    className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row gap-6 items-center cursor-pointer"
+                    onClick={() => {
+                        // In a real app, 'plan' here would come from DB and have a planId
+                        // For static mock data, we just stay here unless updated.
+                        if (plan.planId) navigate(`/plan/${plan.planId}`);
+                    }}
+                >
                   <div className="flex-shrink-0 w-16 h-16 flex items-center justify-center bg-slate-50 rounded-full border border-slate-100">
                     {renderRankBadge(plan.rank)}
                   </div>
