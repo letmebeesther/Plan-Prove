@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Avatar } from '../components/Avatar';
 import { 
     ShieldCheck, Trophy, Target, Settings as SettingsIcon, Edit2, Calendar, 
@@ -12,7 +11,9 @@ import { ProgressBar } from '../components/common/ProgressBar';
 import { Input } from '../components/common/Input';
 import { Plan, User, TrustScoreHistory, PlanAnalysis, ScrapItem, Challenge, MonthlyChallenge } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { fetchMyActivePlans, fetchMyPastPlans, fetchMyJoinedChallenges, fetchMyScraps } from '../services/dbService';
+import { fetchMyActivePlans, fetchMyPastPlans, fetchMyJoinedChallenges, fetchMyScraps, updateUserProfile } from '../services/dbService';
+import { uploadImage } from '../services/storageService';
+import { useNavigate } from 'react-router-dom';
 
 // Mock Data for static parts
 const trustHistory: TrustScoreHistory[] = [
@@ -64,7 +65,8 @@ type TabType = 'PLANS' | 'CHALLENGE' | 'SCRAPS' | 'SOCIAL';
 type SubTabType = 'ACTIVE' | 'PAST' | 'TOGETHER' | 'MISC' | 'FOLLOWER' | 'FOLLOWING';
 
 export function MyPage() {
-    const { currentUser } = useAuth();
+    const navigate = useNavigate();
+    const { currentUser, refreshProfile } = useAuth();
     const [activeTab, setActiveTab] = useState<TabType>('PLANS');
     const [subTab, setSubTab] = useState<SubTabType>('ACTIVE');
     
@@ -83,6 +85,10 @@ export function MyPage() {
     // Edit Profile State
     const [editNickname, setEditNickname] = useState('');
     const [editStatus, setEditStatus] = useState('');
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [isSavingProfile, setIsSavingProfile] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         if (currentUser) {
@@ -91,6 +97,16 @@ export function MyPage() {
             loadMyData();
         }
     }, [currentUser]);
+
+    // Update edit state when modal opens
+    useEffect(() => {
+        if (showEditProfile && currentUser) {
+            setEditNickname(currentUser.nickname);
+            setEditStatus(currentUser.statusMessage || '');
+            setPreviewUrl(currentUser.avatarUrl); 
+            setSelectedFile(null);
+        }
+    }, [showEditProfile, currentUser]);
 
     const loadMyData = async () => {
         if (!currentUser) return;
@@ -114,10 +130,39 @@ export function MyPage() {
         }
     };
 
-    const handleSaveProfile = () => {
-        // Logic to update profile would go here (updateDoc in dbService)
-        setShowEditProfile(false);
-        alert('프로필이 수정되었습니다. (DB 반영은 미구현)');
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            setSelectedFile(file);
+            setPreviewUrl(URL.createObjectURL(file));
+        }
+    };
+
+    const handleSaveProfile = async () => {
+        if (!currentUser) return;
+        
+        setIsSavingProfile(true);
+        try {
+            let avatarUrl = currentUser.avatarUrl;
+            if (selectedFile) {
+                avatarUrl = await uploadImage(selectedFile, `avatars/${currentUser.id}`);
+            }
+
+            await updateUserProfile(currentUser.id, {
+                nickname: editNickname,
+                statusMessage: editStatus,
+                avatarUrl: avatarUrl
+            });
+            
+            await refreshProfile(); // Refresh context to show new data
+            setShowEditProfile(false);
+            alert('프로필이 성공적으로 수정되었습니다.');
+        } catch (error) {
+            console.error(error);
+            alert('프로필 수정 중 오류가 발생했습니다.');
+        } finally {
+            setIsSavingProfile(false);
+        }
     };
 
     if (!currentUser) return <div className="p-10 text-center">로그인이 필요합니다.</div>;
@@ -133,7 +178,7 @@ export function MyPage() {
                     >
                         <Edit2 className="w-4 h-4" /> <span className="text-xs font-bold hidden sm:inline">프로필 수정</span>
                     </button>
-                    <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-full transition-colors">
+                    <button onClick={() => navigate('/settings')} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-full transition-colors">
                         <SettingsIcon className="w-5 h-5" />
                     </button>
                 </div>
@@ -444,21 +489,28 @@ export function MyPage() {
 
             {/* 1. Edit Profile Modal (FR-241 ~ FR-243) */}
             {showEditProfile && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-fade-in" onClick={() => setShowEditProfile(false)}>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-fade-in" onClick={() => !isSavingProfile && setShowEditProfile(false)}>
                     <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-lg font-bold">프로필 수정</h3>
-                            <button onClick={() => setShowEditProfile(false)}><X className="w-5 h-5 text-gray-400" /></button>
+                            <button onClick={() => setShowEditProfile(false)} disabled={isSavingProfile}><X className="w-5 h-5 text-gray-400" /></button>
                         </div>
                         
                         <div className="flex flex-col items-center mb-6">
-                            <div className="relative group cursor-pointer">
-                                <Avatar src={currentUser.avatarUrl} size="xl" />
+                            <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                                <input 
+                                    type="file" 
+                                    ref={fileInputRef} 
+                                    className="hidden" 
+                                    accept="image/*" 
+                                    onChange={handleFileChange}
+                                />
+                                <Avatar src={previewUrl || currentUser.avatarUrl} size="xl" />
                                 <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                     <Camera className="w-6 h-6 text-white" />
                                 </div>
                             </div>
-                            <span className="text-xs text-primary-600 font-bold mt-2 cursor-pointer">사진 변경</span>
+                            <button onClick={() => fileInputRef.current?.click()} className="text-xs text-primary-600 font-bold mt-2 cursor-pointer hover:underline">사진 변경</button>
                         </div>
 
                         <div className="space-y-4">
@@ -472,7 +524,9 @@ export function MyPage() {
                                     onChange={(e) => setEditStatus(e.target.value)}
                                 />
                             </div>
-                            <Button fullWidth onClick={handleSaveProfile}>저장하기</Button>
+                            <Button fullWidth onClick={handleSaveProfile} disabled={isSavingProfile}>
+                                {isSavingProfile ? '저장 중...' : '저장하기'}
+                            </Button>
                         </div>
                     </div>
                 </div>

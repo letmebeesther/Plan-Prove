@@ -257,8 +257,8 @@ export function PlanDetail() {
 
         setSubmitting(true);
         try {
-            let imageUrl = undefined;
-            let fileHash = undefined;
+            let imageUrl: string | null = null;
+            let fileHash: string | null = null;
 
             if (selectedFile && (certType === 'PHOTO' || certType === 'APP_CAPTURE' || certType === 'BIOMETRIC')) {
                 fileHash = await calculateFileHash(selectedFile);
@@ -267,19 +267,25 @@ export function PlanDetail() {
 
             const aiStatus = Math.random() > 0.8 ? 'WARNING' : 'APPROVED'; 
 
-            const newEvidence: Evidence = {
+            // Dynamically construct the object to prevent 'undefined' values which Firestore rejects
+            const evidenceData: any = {
                 id: Date.now().toString(),
                 type: certType,
                 content: certContent,
                 status: aiStatus,
                 createdAt: new Date().toISOString().split('T')[0],
-                url: imageUrl,
-                fileHash: fileHash, 
                 feedback: aiStatus === 'WARNING' ? '검토가 필요합니다.' : '인증되었습니다!',
-                verifiedEmail: certType === 'EMAIL' ? certEmail : undefined,
-                apiProvider: certType === 'API' ? certApiProvider : undefined,
-                apiReferenceId: certType === 'API' ? certApiRef : undefined
             };
+
+            if (imageUrl) evidenceData.url = imageUrl;
+            if (fileHash) evidenceData.fileHash = fileHash;
+            if (certType === 'EMAIL' && certEmail) evidenceData.verifiedEmail = certEmail;
+            if (certType === 'API') {
+                if (certApiProvider) evidenceData.apiProvider = certApiProvider;
+                if (certApiRef) evidenceData.apiReferenceId = certApiRef;
+            }
+
+            const newEvidence = evidenceData as Evidence;
 
             await submitEvidence(id, selectedSubGoalIndex, newEvidence);
             await loadPlan();
@@ -670,8 +676,6 @@ export function PlanDetail() {
                 </div>
             )}
             
-            {/* Other modals remain unchanged */}
-            {/* Include other modals here... (EvidenceDetail, AIExamples, Add/Edit SubGoal) */}
             {showEvidenceDetail && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4 animate-fade-in" onClick={() => setShowEvidenceDetail(null)}>
                     <div className="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl relative" onClick={e => e.stopPropagation()}>

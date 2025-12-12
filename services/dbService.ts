@@ -298,8 +298,6 @@ export const seedDatabase = async (userId: string) => {
   console.log("Database seed completed with Linked Plans!");
 };
 
-// ... (Rest of existing functions) ...
-
 export const createPlan = async (userId: string, planData: any) => {
   try {
     const docRef = await addDoc(collection(db, "plans"), {
@@ -320,6 +318,38 @@ export const createPlan = async (userId: string, planData: any) => {
     return docRef.id;
   } catch (e) {
     console.error("Error creating plan: ", e);
+    throw e;
+  }
+};
+
+export const createChallenge = async (challengeData: Partial<Challenge>) => {
+  try {
+    const docRef = await addDoc(collection(db, "challenges"), {
+      ...challengeData,
+      createdAt: new Date().toISOString(),
+      participantCount: 1,
+      growthRate: 0,
+      avgAchievement: 0,
+      retentionRate: 100,
+      avgTrustScore: challengeData.host?.trustScore || 50,
+      stabilityIndex: 100,
+      notices: [],
+      coHosts: []
+    });
+    return docRef.id;
+  } catch (e) {
+    console.error("Error creating challenge:", e);
+    throw e;
+  }
+};
+
+export const updateUserProfile = async (userId: string, updates: { nickname?: string; statusMessage?: string; avatarUrl?: string }) => {
+  try {
+    const userRef = doc(db, 'users', userId);
+    await updateDoc(userRef, updates);
+    return true;
+  } catch (e) {
+    console.error("Error updating profile:", e);
     throw e;
   }
 };
@@ -462,6 +492,20 @@ export const fetchChallenges = async () => {
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Challenge));
 };
 
+export const fetchChallengeById = async (challengeId: string): Promise<Challenge | null> => {
+  try {
+    const docRef = doc(db, "challenges", challengeId);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return { id: docSnap.id, ...docSnap.data() } as Challenge;
+    }
+    return null;
+  } catch (e) {
+    console.error("Error fetching challenge:", e);
+    return null;
+  }
+}
+
 export const fetchMyJoinedChallenges = async (userId: string) => {
     const q = query(collection(db, "challenges"), where("participantIds", "array-contains", userId));
     const querySnapshot = await getDocs(q);
@@ -517,6 +561,24 @@ export const fetchFriendActivities = async () => {
     } as Certification));
   } catch (e) {
     console.error("Error fetching friend activities:", e);
+    return [];
+  }
+};
+
+export const fetchChallengeFeeds = async (challengeId: string) => {
+  try {
+    // Note: Using client-side sorting instead of composite index to prevent errors for users without index setup
+    const q = query(
+      collection(db, "feeds"), 
+      where("challengeId", "==", challengeId)
+    );
+    const querySnapshot = await getDocs(q);
+    const feeds = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Certification));
+    
+    // Sort descending by createdAt
+    return feeds.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  } catch (e) {
+    console.error("Error fetching challenge feeds:", e);
     return [];
   }
 };
@@ -652,4 +714,82 @@ export const adminUpdateUser = async (userId: string, updates: Partial<User>) =>
         console.error("Error updating user (Admin):", e);
         throw e;
     }
+};
+
+// --- Public Plans & Search Functions ---
+
+export const fetchPublicPlans = async (category: string = '전체') => {
+  try {
+    let constraints: any[] = [where("isPublic", "==", true)];
+    
+    if (category !== '전체') {
+      constraints.push(where("category", "==", category));
+    }
+    
+    const q = query(collection(db, "plans"), ...constraints);
+    const querySnapshot = await getDocs(q);
+    
+    let plans = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Plan));
+    
+    // Sort client-side by createdAt desc
+    plans.sort((a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime());
+    
+    return plans;
+  } catch (e) {
+    console.error("Error fetching public plans:", e);
+    return [];
+  }
+};
+
+export const searchPublicPlans = async ({ keyword, category, sort, status }: {
+  keyword?: string;
+  category?: string;
+  sort?: 'LATEST' | 'POPULAR' | 'ACHIEVEMENT';
+  status?: 'ALL' | 'ACTIVE' | 'COMPLETED';
+}) => {
+  try {
+    let constraints: any[] = [where("isPublic", "==", true)];
+    
+    if (category && category !== '전체') {
+      constraints.push(where("category", "==", category));
+    }
+
+    const q = query(collection(db, "plans"), ...constraints);
+    const querySnapshot = await getDocs(q);
+    
+    let plans = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Plan));
+
+    if (keyword) {
+        const lowerKeyword = keyword.toLowerCase();
+        plans = plans.filter(p => 
+            p.title.toLowerCase().includes(lowerKeyword) || 
+            (p.description && p.description.toLowerCase().includes(lowerKeyword)) ||
+            (p.tags && p.tags.some(t => t.toLowerCase().includes(lowerKeyword)))
+        );
+    }
+
+    if (status && status !== 'ALL') {
+        const today = new Date().toISOString().split('T')[0];
+        if (status === 'ACTIVE') {
+            plans = plans.filter(p => p.endDate >= today && (p.progress < 100));
+        } else if (status === 'COMPLETED') {
+            plans = plans.filter(p => p.progress === 100 || p.endDate < today);
+        }
+    }
+
+    if (sort) {
+        if (sort === 'LATEST') {
+            plans.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        } else if (sort === 'POPULAR') {
+            plans.sort((a, b) => (b.likes || 0) - (a.likes || 0));
+        } else if (sort === 'ACHIEVEMENT') {
+            plans.sort((a, b) => b.progress - a.progress);
+        }
+    }
+
+    return plans;
+  } catch (e) {
+    console.error("Error searching plans:", e);
+    return [];
+  }
 };

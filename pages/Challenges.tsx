@@ -1,89 +1,11 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { Users, Filter, Search, Plus, TrendingUp, Clock, Hash } from 'lucide-react';
 import { Challenge } from '../types';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/common/Button';
 import { Input } from '../components/common/Input';
-
-// Mock Data
-const mockChallenges: Challenge[] = [
-    {
-        id: 'c1',
-        title: '미라클 모닝 5AM',
-        description: '매일 아침 5시에 기상하고 타임스탬프 앱으로 인증하세요.',
-        statusMessage: '일찍 일어나는 새가 벌레를 잡는다',
-        imageUrl: 'https://picsum.photos/400/200?random=10',
-        category: '생활루틴',
-        tags: ['기상', '새벽'],
-        isPublic: true,
-        createdAt: '2023-09-01',
-        host: { id: 'u1', nickname: 'Host1', avatarUrl: '', trustScore: 90 },
-        coHosts: [],
-        participantCount: 1240,
-        growthRate: 15,
-        avgAchievement: 85,
-        retentionRate: 90,
-        avgTrustScore: 88,
-        stabilityIndex: 95
-    },
-    {
-        id: 'c2',
-        title: '매일 독서 30분',
-        description: '하루 30분 책을 읽고 인상 깊은 구절을 공유하세요.',
-        statusMessage: '책 속에 길이 있다',
-        imageUrl: 'https://picsum.photos/400/200?random=11',
-        category: '독서',
-        tags: ['책', '마음의양식'],
-        isPublic: true,
-        createdAt: '2023-09-10',
-        host: { id: 'u2', nickname: 'BookWorm', avatarUrl: '', trustScore: 95 },
-        coHosts: [],
-        participantCount: 850,
-        growthRate: 8,
-        avgAchievement: 92,
-        retentionRate: 85,
-        avgTrustScore: 90,
-        stabilityIndex: 88
-    },
-    {
-        id: 'c3',
-        title: '설탕 끊기 챌린지',
-        description: '2주 동안 가공식품과 설탕을 멀리하는 식단 챌린지.',
-        statusMessage: '건강한 몸에 건강한 정신',
-        imageUrl: 'https://picsum.photos/400/200?random=12',
-        category: '건강관리',
-        tags: ['다이어트', '건강'],
-        isPublic: true,
-        createdAt: '2023-10-01',
-        host: { id: 'u3', nickname: 'Healthy', avatarUrl: '', trustScore: 88 },
-        coHosts: [],
-        participantCount: 2300,
-        growthRate: 25,
-        avgAchievement: 78,
-        retentionRate: 80,
-        avgTrustScore: 85,
-        stabilityIndex: 82
-    },
-    {
-        id: 'c4',
-        title: '매일 1만보 걷기',
-        description: '하루 1만보를 걷고 만보기 화면을 캡처해서 인증하세요.',
-        statusMessage: '걷는 것이 곧 사는 것이다',
-        imageUrl: 'https://picsum.photos/400/200?random=13',
-        category: '운동',
-        tags: ['걷기', '유산소'],
-        isPublic: true,
-        createdAt: '2023-10-05',
-        host: { id: 'u4', nickname: 'Walker', avatarUrl: '', trustScore: 92 },
-        coHosts: [],
-        participantCount: 5000,
-        growthRate: 10,
-        avgAchievement: 80,
-        retentionRate: 92,
-        avgTrustScore: 89,
-        stabilityIndex: 94
-    }
-];
+import { fetchChallenges } from '../services/dbService';
 
 const categories = ['전체', '운동', '건강관리', '어학', '자격증', '공부루틴', '커리어스킬', '생활루틴', '재정관리', '취미', '독서'];
 
@@ -92,12 +14,30 @@ export function Challenges() {
   const [activeTab, setActiveTab] = useState<'POPULAR' | 'NEW'>('POPULAR');
   const [selectedCategory, setSelectedCategory] = useState('전체');
   const [searchQuery, setSearchQuery] = useState('');
+  
+  const [challenges, setChallenges] = useState<Challenge[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filteredChallenges = mockChallenges.filter(c => {
+  useEffect(() => {
+      const loadData = async () => {
+          setLoading(true);
+          try {
+              const data = await fetchChallenges();
+              setChallenges(data);
+          } catch (e) {
+              console.error("Failed to load challenges", e);
+          } finally {
+              setLoading(false);
+          }
+      };
+      loadData();
+  }, []);
+
+  const filteredChallenges = challenges.filter(c => {
     if (selectedCategory !== '전체' && c.category !== selectedCategory) return false;
     if (searchQuery) {
         const query = searchQuery.toLowerCase();
-        return c.title.toLowerCase().includes(query) || c.tags.some(t => t.toLowerCase().includes(query));
+        return c.title.toLowerCase().includes(query) || (c.tags && c.tags.some(t => t.toLowerCase().includes(query)));
     }
     return true;
   }).sort((a, b) => {
@@ -165,43 +105,56 @@ export function Challenges() {
         </div>
 
         {/* Challenge Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredChallenges.map((challenge) => (
-                <div 
-                    key={challenge.id} 
-                    onClick={() => navigate(`/challenges/${challenge.id}`)}
-                    className="group bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer"
-                >
-                    <div className="h-40 overflow-hidden relative">
-                        <img src={challenge.imageUrl} alt={challenge.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                        <div className="absolute top-3 left-3 px-2 py-1 bg-black/50 backdrop-blur-md rounded-lg text-white text-xs font-bold">
-                            {challenge.category}
+        {loading ? (
+            <div className="text-center py-20">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-2"></div>
+                <p className="text-gray-500">도전 목록을 불러오는 중...</p>
+            </div>
+        ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {filteredChallenges.length > 0 ? filteredChallenges.map((challenge) => (
+                    <div 
+                        key={challenge.id} 
+                        onClick={() => navigate(`/challenges/${challenge.id}`)}
+                        className="group bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer"
+                    >
+                        <div className="h-40 overflow-hidden relative">
+                            <img src={challenge.imageUrl} alt={challenge.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                            <div className="absolute top-3 left-3 px-2 py-1 bg-black/50 backdrop-blur-md rounded-lg text-white text-xs font-bold">
+                                {challenge.category}
+                            </div>
+                            {challenge.tags && challenge.tags.length > 0 && (
+                                <div className="absolute bottom-3 left-3 flex gap-1">
+                                    {challenge.tags.slice(0, 2).map(tag => (
+                                        <span key={tag} className="px-1.5 py-0.5 bg-white/90 backdrop-blur-md rounded text-[10px] font-bold text-gray-800">#{tag}</span>
+                                    ))}
+                                </div>
+                            )}
                         </div>
-                        {challenge.tags.length > 0 && (
-                            <div className="absolute bottom-3 left-3 flex gap-1">
-                                {challenge.tags.slice(0, 2).map(tag => (
-                                    <span key={tag} className="px-1.5 py-0.5 bg-white/90 backdrop-blur-md rounded text-[10px] font-bold text-gray-800">#{tag}</span>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                    <div className="p-5">
-                        <h3 className="font-bold text-gray-900 text-lg mb-1 truncate">{challenge.title}</h3>
-                        <p className="text-sm text-gray-500 line-clamp-2 mb-4 h-10">{challenge.description}</p>
-                        
-                        <div className="flex items-center justify-between pt-4 border-t border-gray-50">
-                            <div className="flex items-center gap-1.5 text-gray-600 text-sm">
-                                <Users className="w-4 h-4" />
-                                <span className="font-semibold">{challenge.participantCount.toLocaleString()}명</span>
-                            </div>
-                            <div className="text-green-600 text-xs font-bold bg-green-50 px-2 py-1 rounded-full">
-                                +{challenge.growthRate}% 성장
+                        <div className="p-5">
+                            <h3 className="font-bold text-gray-900 text-lg mb-1 truncate">{challenge.title}</h3>
+                            <p className="text-sm text-gray-500 line-clamp-2 mb-4 h-10">{challenge.description}</p>
+                            
+                            <div className="flex items-center justify-between pt-4 border-t border-gray-50">
+                                <div className="flex items-center gap-1.5 text-gray-600 text-sm">
+                                    <Users className="w-4 h-4" />
+                                    <span className="font-semibold">{challenge.participantCount.toLocaleString()}명</span>
+                                </div>
+                                {challenge.growthRate > 0 && (
+                                    <div className="text-green-600 text-xs font-bold bg-green-50 px-2 py-1 rounded-full">
+                                        +{challenge.growthRate}% 성장
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
-                </div>
-            ))}
-        </div>
+                )) : (
+                    <div className="col-span-full py-20 text-center text-gray-400 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                        조건에 맞는 도전이 없습니다. 새로운 도전을 만들어보세요!
+                    </div>
+                )}
+            </div>
+        )}
     </div>
   );
 }

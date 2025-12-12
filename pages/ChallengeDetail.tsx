@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
@@ -13,58 +14,57 @@ import { ProgressBar } from '../components/common/ProgressBar';
 import { Challenge, Participant, ChatMessage, Certification, Notice, ChatRoom, Plan } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { subscribeToChat, sendChatMessage } from '../services/chatService';
+import { fetchChallengeById, fetchMyActivePlans, fetchChallengeFeeds } from '../services/dbService';
 
-// --- Mock Data (Ideally fetch from DB) ---
+// --- Mock Data Helpers (Keep these to fill in non-DB parts for now) ---
+const getMockParticipants = (count: number, host?: any): Participant[] => {
+    // If it's a new room (count 1), just return host
+    if (count <= 1 && host) {
+        return [{
+            user: host,
+            role: 'HOST',
+            achievementRate: 0,
+            growthRate: 0,
+            connectedGoalTitle: '도전 시작',
+            joinedAt: '방금 전',
+            lastCertifiedAt: '-',
+            trustScore: host.trustScore || 50
+        }];
+    }
 
-const mockChallenge: Challenge = {
-    id: 'c1',
-    title: '미라클 모닝 5AM',
-    description: '매일 아침 5시에 기상하여 하루를 시작하는 습관을 기릅니다. 타임스탬프 앱을 이용해 인증샷을 올려주세요. 서로 응원하며 성장합시다!\n\n**규칙**\n1. 오전 5:00 ~ 5:30 사이에 기상 인증\n2. 타임스탬프 필수\n3. 서로 격려의 댓글 남기기',
-    statusMessage: '일찍 일어나는 새가 벌레를 잡는다 🐦',
-    imageUrl: 'https://picsum.photos/1200/600?random=10',
-    category: '생활루틴',
-    tags: ['기상', '새벽', '습관', '자기계발'],
-    isPublic: true,
-    createdAt: '2023-09-01',
-    host: { id: 'h1', nickname: '새벽반장', trustScore: 95, avatarUrl: 'https://picsum.photos/200/200?random=1' },
-    coHosts: [{ id: 'ch1', nickname: '부반장1', trustScore: 92, avatarUrl: 'https://picsum.photos/200/200?random=2' }],
-    participantCount: 1240,
-    growthRate: 15,
-    avgAchievement: 85,
-    retentionRate: 90,
-    avgTrustScore: 88,
-    stabilityIndex: 95,
-    notices: [
-        { id: 'n1', title: '🚨 10월 챌린지 운영 정책 변경 안내', content: '인증 시간이 5:30분까지로 변경되었습니다.', author: { id: 'h1', nickname: '새벽반장', avatarUrl: '', trustScore: 95 }, createdAt: '2023-10-25', isImportant: true },
-        { id: 'n2', title: '이달의 우수 인증러 발표', content: '축하합니다! @Member1 님', author: { id: 'h1', nickname: '새벽반장', avatarUrl: '', trustScore: 95 }, createdAt: '2023-10-20', isImportant: false }
-    ]
+    // Else return list with host + mock members
+    const participants: Participant[] = [];
+    if(host) {
+        participants.push({
+            user: host,
+            role: 'HOST',
+            achievementRate: 95,
+            growthRate: 10,
+            connectedGoalTitle: '리더의 도전',
+            joinedAt: '2023-09-01',
+            lastCertifiedAt: '방금 전',
+            trustScore: host.trustScore || 90
+        });
+    }
+    
+    // Fill remaining mock
+    for(let i=0; i< Math.min(count - 1, 19); i++) {
+        participants.push({
+            user: { id: `u${i}`, nickname: `Member ${i+1}`, avatarUrl: `https://picsum.photos/200/200?random=${i+10}`, trustScore: 70 + Math.floor(Math.random() * 30) },
+            role: 'MEMBER',
+            achievementRate: 60 + Math.floor(Math.random() * 40),
+            growthRate: Math.floor(Math.random() * 20),
+            connectedGoalTitle: '함께 도전합니다',
+            joinedAt: '2023-09-15',
+            lastCertifiedAt: '2시간 전',
+            trustScore: 70 + Math.floor(Math.random() * 30)
+        });
+    }
+    return participants;
 };
 
-const mockParticipants: Participant[] = Array(20).fill(null).map((_, i) => ({
-    user: { id: `u${i}`, nickname: `Member ${i+1}`, avatarUrl: `https://picsum.photos/200/200?random=${i+10}`, trustScore: 70 + Math.floor(Math.random() * 30) },
-    role: i === 0 ? 'HOST' : 'MEMBER',
-    achievementRate: 60 + Math.floor(Math.random() * 40),
-    growthRate: Math.floor(Math.random() * 20),
-    connectedGoalTitle: '5시 기상 30일차 도전',
-    joinedAt: '2023-09-15',
-    lastCertifiedAt: '방금 전',
-    trustScore: 70 + Math.floor(Math.random() * 30)
-}));
-
-const mockFeed: Certification[] = [
-    { id: 'f1', user: mockParticipants[1].user, imageUrl: 'https://picsum.photos/400/400?random=20', description: '오늘도 성공! 상쾌하네요.', relatedGoalTitle: '30일 챌린지', createdAt: '10분 전', likes: 12, comments: 2, reactions: {'🔥': 5} },
-    { id: 'f2', user: mockParticipants[2].user, imageUrl: 'https://picsum.photos/400/400?random=21', description: '조금 늦었지만 일어났습니다.', relatedGoalTitle: '습관 만들기', createdAt: '30분 전', likes: 5, comments: 1, reactions: {'👏': 3} },
-    { id: 'f3', user: mockParticipants[3].user, description: '오늘은 텍스트로 인증합니다. 앱이 오류가 나네요 ㅠㅠ', relatedGoalTitle: '기상 미션', createdAt: '1시간 전', likes: 8, comments: 4, reactions: {'💪': 2} },
-];
-
 const mockChatRooms: ChatRoom[] = [
-    { id: 'cr1', type: 'DIRECT', participants: [mockParticipants[1].user], lastMessage: '안녕하세요!', lastMessageTime: '어제', unreadCount: 0 },
-    { id: 'cr2', type: 'GROUP', name: '서울 지역 모임', participants: [mockParticipants[1].user, mockParticipants[2].user], lastMessage: '이번 주 정모 어때요?', lastMessageTime: '10분 전', unreadCount: 3 },
-];
-
-const myPlans: Plan[] = [
-    { id: 'p1', title: '나의 미라클 모닝', category: '생활루틴', progress: 0, description: '', startDate: '', endDate: '', subGoals: [], author: { id: 'me', nickname: '나', avatarUrl: '', trustScore: 0 } },
-    { id: 'p2', title: '영어 단어 암기', category: '어학', progress: 50, description: '', startDate: '', endDate: '', subGoals: [], author: { id: 'me', nickname: '나', avatarUrl: '', trustScore: 0 } },
+    { id: 'cr1', type: 'GROUP', name: '서울 지역 모임', participants: [], lastMessage: '이번 주 정모 어때요?', lastMessageTime: '10분 전', unreadCount: 3 },
 ];
 
 type TabType = 'HOME' | 'FEED' | 'CHAT' | 'MEMBERS' | 'CHATLIST';
@@ -74,10 +74,18 @@ export function ChallengeDetail() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('HOME');
   const [isJoined, setIsJoined] = useState(false); 
   const [isBookmarked, setIsBookmarked] = useState(false);
   
+  // Participants Data
+  const [participants, setParticipants] = useState<Participant[]>([]);
+
+  // Feeds Data
+  const [feeds, setFeeds] = useState<Certification[]>([]);
+
   // Modals State
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showLeaveModal, setShowLeaveModal] = useState(false);
@@ -100,6 +108,57 @@ export function ChallengeDetail() {
 
   // Ranking State
   const [showAllRankings, setShowAllRankings] = useState(false);
+  
+  // My Plans for Join Modal
+  const [myPlans, setMyPlans] = useState<Plan[]>([]);
+
+  // --- Fetch Challenge Data ---
+  useEffect(() => {
+      const loadData = async () => {
+          if (!id) return;
+          setLoading(true);
+          try {
+              const data = await fetchChallengeById(id);
+              if (data) {
+                  setChallenge(data);
+                  // Generate visual participant list based on real count & host
+                  setParticipants(getMockParticipants(data.participantCount, data.host));
+                  
+                  // Check if joined
+                  if (currentUser && data.participantIds?.includes(currentUser.id)) {
+                      setIsJoined(true);
+                  }
+              }
+          } catch (e) {
+              console.error("Failed to load challenge", e);
+          } finally {
+              setLoading(false);
+          }
+      };
+      loadData();
+  }, [id, currentUser]);
+
+  // Fetch Feeds when Tab is active
+  useEffect(() => {
+      if (activeTab === 'FEED' && id) {
+          const loadFeeds = async () => {
+              const data = await fetchChallengeFeeds(id);
+              setFeeds(data);
+          };
+          loadFeeds();
+      }
+  }, [activeTab, id]);
+
+  // Load My Plans for Join Modal
+  useEffect(() => {
+      const loadPlans = async () => {
+          if (currentUser && showJoinModal) {
+              const plans = await fetchMyActivePlans(currentUser.id);
+              setMyPlans(plans);
+          }
+      };
+      loadPlans();
+  }, [currentUser, showJoinModal]);
 
   // --- Chat Subscription (Realtime Database) ---
   useEffect(() => {
@@ -139,12 +198,14 @@ export function ChallengeDetail() {
       setShowJoinModal(false);
       alert(`"${planId}" 계획과 함께 도전에 참여했습니다! 🎉`);
       setActiveTab('HOME'); 
+      // In real app: call joinChallenge(id, planId, userId)
   };
 
   const handleLeave = () => {
       setIsJoined(false);
       setShowLeaveModal(false);
       navigate('/challenges'); 
+      // In real app: call leaveChallenge(id, userId)
   };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
@@ -170,7 +231,7 @@ export function ChallengeDetail() {
       return (p.achievementRate * 0.5) + (p.growthRate * 0.3) + (p.user.trustScore * 0.2);
   };
 
-  const rankingParticipants = [...mockParticipants]
+  const rankingParticipants = [...participants]
       .map(p => ({ ...p, totalScore: calculateTotalScore(p) }))
       .sort((a, b) => b.totalScore - a.totalScore); 
 
@@ -182,15 +243,18 @@ export function ChallengeDetail() {
       return null;
   };
 
+  if (loading) return <div className="p-20 text-center">로딩 중...</div>;
+  if (!challenge) return <div className="p-20 text-center">도전방을 찾을 수 없습니다.</div>;
+
   return (
     <div className="pb-20 max-w-5xl mx-auto bg-gray-50 min-h-screen animate-fade-in">
         {/* --- Header --- */}
         <div className="relative h-64 md:h-80 bg-gray-900 group">
             <img 
-                src={mockChallenge.imageUrl} 
-                alt={mockChallenge.title} 
+                src={challenge.imageUrl} 
+                alt={challenge.title} 
                 className="w-full h-full object-cover opacity-60 group-hover:opacity-40 transition-opacity duration-500 cursor-pointer" 
-                onClick={() => setShowFullImage(mockChallenge.imageUrl)}
+                onClick={() => setShowFullImage(challenge.imageUrl)}
             />
             
             <div className="absolute top-4 right-4 flex gap-2">
@@ -207,32 +271,32 @@ export function ChallengeDetail() {
 
             <div className="absolute bottom-0 left-0 p-6 md:p-8 w-full text-white">
                 <div className="flex items-center gap-2 mb-2">
-                    <span className="px-2.5 py-1 bg-white/20 backdrop-blur-md rounded-lg text-xs font-bold border border-white/10">{mockChallenge.category}</span>
-                    <span className="text-white/90 text-sm font-medium">{mockChallenge.statusMessage}</span>
+                    <span className="px-2.5 py-1 bg-white/20 backdrop-blur-md rounded-lg text-xs font-bold border border-white/10">{challenge.category}</span>
+                    <span className="text-white/90 text-sm font-medium">{challenge.statusMessage}</span>
                 </div>
-                <h1 className="text-3xl md:text-4xl font-bold mb-4 drop-shadow-md">{mockChallenge.title}</h1>
+                <h1 className="text-3xl md:text-4xl font-bold mb-4 drop-shadow-md">{challenge.title}</h1>
                 
                 <div className="flex flex-wrap items-center gap-2 mb-4">
-                    {mockChallenge.tags.map(tag => (
+                    {challenge.tags?.map(tag => (
                         <span key={tag} className="text-xs text-white/80 bg-black/20 px-2 py-0.5 rounded backdrop-blur-sm cursor-pointer hover:bg-black/40">#{tag}</span>
                     ))}
                 </div>
 
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4 text-sm font-medium">
-                        <div className="flex items-center gap-2 cursor-pointer hover:underline" onClick={() => setShowParticipantModal({ ...mockParticipants[0], role: 'HOST' })}>
+                        <div className="flex items-center gap-2 cursor-pointer hover:underline" onClick={() => setShowParticipantModal({ ...participants[0], role: 'HOST' })}>
                              <div className="relative">
-                                 <Avatar src={mockChallenge.host.avatarUrl} size="sm" />
+                                 <Avatar src={challenge.host.avatarUrl} size="sm" />
                                  <div className="absolute -top-1 -right-1"><Crown className="w-3 h-3 text-yellow-400 fill-current" /></div>
                              </div>
-                             <span>{mockChallenge.host.nickname}</span>
+                             <span>{challenge.host.nickname}</span>
                         </div>
                         <span className="text-white/50">|</span>
                         <div className="flex items-center gap-1">
-                            <Users className="w-4 h-4" /> {mockChallenge.participantCount.toLocaleString()}명
+                            <Users className="w-4 h-4" /> {challenge.participantCount.toLocaleString()}명
                         </div>
                         <span className="text-white/50">|</span>
-                        <span>개설일 {mockChallenge.createdAt}</span>
+                        <span>개설일 {challenge.createdAt.split('T')[0]}</span>
                     </div>
                 </div>
             </div>
@@ -240,16 +304,16 @@ export function ChallengeDetail() {
 
         {/* --- Sticky Stats & Notice --- */}
         <div className="sticky top-14 z-20 bg-white shadow-sm border-b border-gray-100">
-            {mockChallenge.notices && mockChallenge.notices.length > 0 && (
+            {challenge.notices && challenge.notices.length > 0 && (
                 <div className="bg-primary-50 px-4 py-2 flex items-center justify-between text-sm">
                     <div className="flex items-center gap-2 overflow-hidden">
                         <Bell className="w-4 h-4 text-primary-600 flex-shrink-0" />
                         <span className="font-bold text-primary-700 whitespace-nowrap">공지</span>
-                        <span className="truncate text-gray-700 cursor-pointer hover:underline" onClick={() => setShowNoticeModal(mockChallenge.notices![0])}>
-                            {mockChallenge.notices[0].title}
+                        <span className="truncate text-gray-700 cursor-pointer hover:underline" onClick={() => setShowNoticeModal(challenge.notices![0])}>
+                            {challenge.notices[0].title}
                         </span>
                     </div>
-                    {mockChallenge.notices.length > 1 && (
+                    {challenge.notices.length > 1 && (
                         <span className="text-xs text-gray-500 flex-shrink-0 ml-2 cursor-pointer hover:text-gray-900">+더보기</span>
                     )}
                 </div>
@@ -264,7 +328,7 @@ export function ChallengeDetail() {
                     { id: 'FEED', label: '인증피드' },
                     { id: 'CHAT', label: '오픈채팅' },
                     { id: 'CHATLIST', label: '채팅목록' },
-                    { id: 'MEMBERS', label: `멤버 ${mockChallenge.participantCount}` },
+                    { id: 'MEMBERS', label: `멤버 ${challenge.participantCount}` },
                 ].map(tab => (
                     <button
                         key={tab.id}
@@ -290,11 +354,11 @@ export function ChallengeDetail() {
                     {/* Dashboard */}
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                          {[
-                             { label: '그룹 성장률', value: `+${mockChallenge.growthRate}%`, icon: TrendingUp, color: 'text-green-600', tooltip: '지난 7일간 달성률 증가폭' },
-                             { label: '평균 달성률', value: `${mockChallenge.avgAchievement}%`, icon: Target, color: 'text-blue-600', tooltip: '전체 멤버의 평균 목표 달성률' },
-                             { label: '유지율', value: `${mockChallenge.retentionRate}%`, icon: Activity, color: 'text-orange-600', tooltip: '최근 7일 이내 인증한 멤버 비율' },
-                             { label: '신뢰도 평균', value: `${mockChallenge.avgTrustScore}`, icon: Shield, color: 'text-indigo-600', tooltip: '멤버들의 평균 신뢰도 점수' },
-                             { label: '안정성 지수', value: `${mockChallenge.stabilityIndex}`, icon: CheckCircle2, color: 'text-teal-600', tooltip: '신고/제재 없는 클린 지수' },
+                             { label: '그룹 성장률', value: `+${challenge.growthRate || 0}%`, icon: TrendingUp, color: 'text-green-600', tooltip: '지난 7일간 달성률 증가폭' },
+                             { label: '평균 달성률', value: `${challenge.avgAchievement || 0}%`, icon: Target, color: 'text-blue-600', tooltip: '전체 멤버의 평균 목표 달성률' },
+                             { label: '유지율', value: `${challenge.retentionRate || 100}%`, icon: Activity, color: 'text-orange-600', tooltip: '최근 7일 이내 인증한 멤버 비율' },
+                             { label: '신뢰도 평균', value: `${challenge.avgTrustScore || 50}`, icon: Shield, color: 'text-indigo-600', tooltip: '멤버들의 평균 신뢰도 점수' },
+                             { label: '안정성 지수', value: `${challenge.stabilityIndex || 100}`, icon: CheckCircle2, color: 'text-teal-600', tooltip: '신고/제재 없는 클린 지수' },
                          ].map((stat, i) => (
                              <div key={i} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm relative group cursor-help">
                                  <div className="flex items-center gap-1 text-xs text-gray-500 mb-1">
@@ -313,7 +377,7 @@ export function ChallengeDetail() {
 
                     <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
                         <h3 className="font-bold text-lg mb-4">도전 소개</h3>
-                        <p className="text-gray-700 leading-relaxed whitespace-pre-line">{mockChallenge.description}</p>
+                        <p className="text-gray-700 leading-relaxed whitespace-pre-line">{challenge.description}</p>
                     </div>
 
                     {/* Comprehensive Ranking */}
@@ -323,7 +387,7 @@ export function ChallengeDetail() {
                                 <Trophy className="w-5 h-5 text-yellow-500" /> 실시간 종합 랭킹
                             </h3>
                             {isJoined && (
-                                <span className="text-xs text-gray-500">내 순위: <span className="font-bold text-primary-600">5위</span> (종합 85.5점)</span>
+                                <span className="text-xs text-gray-500">내 순위: <span className="font-bold text-primary-600">-위</span></span>
                             )}
                         </div>
                         
@@ -340,7 +404,7 @@ export function ChallengeDetail() {
                         <div className={`space-y-3 ${!isJoined ? 'filter blur-sm select-none opacity-50' : ''}`}>
                             {rankingParticipants.slice(0, (!isJoined || !showAllRankings) ? 5 : undefined).map((p, idx) => {
                                 const rank = idx + 1;
-                                const isMe = isJoined && idx === 4; 
+                                const isMe = isJoined && p.user.id === currentUser?.id; 
                                 return (
                                     <div key={p.user.id} className={`flex items-center gap-4 p-3 rounded-xl transition-colors ${isMe ? 'bg-primary-50 border border-primary-100' : 'hover:bg-gray-50'}`}>
                                         <div className={`w-8 text-center font-bold ${rank <= 3 ? 'text-yellow-500 text-lg' : 'text-gray-400'}`}>{rank}</div>
@@ -402,7 +466,7 @@ export function ChallengeDetail() {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {mockFeed.filter(f => feedFilter === 'ALL' || (feedFilter === 'PHOTO' && f.imageUrl) || (feedFilter === 'TEXT' && !f.imageUrl)).map(feed => (
+                        {feeds.filter(f => feedFilter === 'ALL' || (feedFilter === 'PHOTO' && f.imageUrl) || (feedFilter === 'TEXT' && !f.imageUrl)).map(feed => (
                             <div key={feed.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-all cursor-pointer" onClick={() => setShowFeedDetailModal(feed)}>
                                 {feed.imageUrl && (
                                     <div className="h-48 overflow-hidden bg-gray-100">
@@ -430,6 +494,11 @@ export function ChallengeDetail() {
                                 </div>
                             </div>
                         ))}
+                        {feeds.length === 0 && (
+                            <div className="col-span-full py-10 text-center text-gray-400">
+                                아직 인증 피드가 없습니다. 첫 번째 인증을 남겨보세요!
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
@@ -451,7 +520,7 @@ export function ChallengeDetail() {
                          <div className="flex items-center gap-2">
                              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
                              <span className="font-bold text-gray-700 text-sm">오픈 채팅방</span>
-                             <span className="text-xs text-gray-400">{mockChallenge.participantCount}명 참여 중</span>
+                             <span className="text-xs text-gray-400">{challenge.participantCount}명 참여 중</span>
                          </div>
                          <button className="p-2 hover:bg-gray-200 rounded-full"><Search className="w-4 h-4 text-gray-500" /></button>
                     </div>
@@ -545,7 +614,7 @@ export function ChallengeDetail() {
                     ))}
                     {mockChatRooms.length === 0 && (
                         <div className="text-center py-10 text-gray-400">
-                            대화 목록이 없습니다. 멤버들과 대화를 시작해보세요!
+                            대화 목록이 없습니다.
                         </div>
                     )}
                 </div>
@@ -579,7 +648,7 @@ export function ChallengeDetail() {
                     </div>
 
                     <div className="bg-white rounded-2xl border border-gray-100 divide-y divide-gray-50 shadow-sm">
-                        {mockParticipants.map(member => (
+                        {participants.map(member => (
                             <div key={member.user.id} className="p-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer transition-colors" onClick={() => setShowParticipantModal(member)}>
                                 <div className="flex items-center gap-3">
                                     <div className="relative">
@@ -610,6 +679,9 @@ export function ChallengeDetail() {
                                 </div>
                             </div>
                         ))}
+                        {participants.length === 0 && (
+                            <div className="p-8 text-center text-gray-400">참여자가 없습니다.</div>
+                        )}
                     </div>
                  </div>
             )}
@@ -635,12 +707,14 @@ export function ChallengeDetail() {
                     <p className="text-gray-600 mb-4 text-sm">이 도전방과 함께할 나의 목표를 선택해주세요. (FR-289)</p>
                     
                     <div className="space-y-3 mb-6 max-h-60 overflow-y-auto">
-                        {myPlans.map(plan => (
+                        {myPlans.length > 0 ? myPlans.map(plan => (
                             <div key={plan.id} className="p-3 border border-gray-200 rounded-xl hover:border-primary-500 cursor-pointer hover:bg-primary-50 transition-colors" onClick={() => handleJoin(plan.id)}>
                                 <p className="font-bold text-gray-900 text-sm">{plan.title}</p>
                                 <p className="text-xs text-gray-500">{plan.category} • 진행률 {plan.progress}%</p>
                             </div>
-                        ))}
+                        )) : (
+                            <div className="text-center py-4 text-gray-400 text-sm">진행 중인 계획이 없습니다.</div>
+                        )}
                         <button className="w-full py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-500 text-sm font-bold hover:border-primary-500 hover:text-primary-500 transition-colors flex items-center justify-center gap-2" onClick={() => navigate('/new-plan')}>
                             <UserPlus className="w-4 h-4" /> 새 계획 만들기
                         </button>

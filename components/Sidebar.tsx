@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Home, PlusCircle, Users, TrendingUp, Trophy, Grid, User, Settings, X } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';

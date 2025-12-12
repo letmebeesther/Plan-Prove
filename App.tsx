@@ -1,4 +1,5 @@
-import React from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
@@ -16,34 +17,58 @@ import { MonthlyChallengeDetail } from './pages/MonthlyChallengeDetail';
 import { Settings } from './pages/Settings';
 import { PlanDetail } from './pages/PlanDetail';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { Flame } from 'lucide-react';
+
+interface SplashScreenProps {
+  onFinish: () => void;
+}
+
+function SplashScreen({ onFinish }: SplashScreenProps) {
+  return (
+    <div className="fixed inset-0 bg-white z-[9999] flex flex-col items-center justify-center animate-fade-in p-4">
+        {/* Changed from animate-bounce to animate-fade-up for a more sincere, steady look */}
+        <div className="bg-primary-50 p-6 rounded-3xl mb-6 animate-fade-up shadow-sm">
+            <Flame className="w-20 h-20 text-primary-600 fill-current" />
+        </div>
+        <h1 className="text-4xl font-bold text-gray-900 mb-2 tracking-tight animate-fade-in" style={{ animationDelay: '0.3s' }}>Plan & Prove</h1>
+        <p className="text-gray-500 font-medium text-lg animate-fade-in mb-16 text-center" style={{ animationDelay: '0.6s' }}>도전하고 계획하고 성공하세요</p>
+        
+        <button 
+            onClick={onFinish}
+            className="px-10 py-4 bg-primary-600 hover:bg-primary-700 text-white text-lg font-bold rounded-2xl shadow-xl shadow-primary-200 transition-all hover:scale-105 active:scale-95 animate-fade-in flex items-center gap-2"
+            style={{ animationDelay: '1.2s', animationFillMode: 'backwards' }}
+        >
+            JUST DO IT!
+        </button>
+    </div>
+  );
+}
 
 function AppRoutes() {
-  const { loading } = useAuth();
+  const { currentUser, loading: authLoading } = useAuth();
+  const [showSplash, setShowSplash] = useState(true);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">로딩 중...</p>
-        </div>
-      </div>
-    );
+  // Removed automatic timeout effect. User must click the button.
+
+  if (showSplash || authLoading) {
+    return <SplashScreen onFinish={() => setShowSplash(false)} />;
   }
 
   return (
     <HashRouter>
       <Routes>
-        {/* Public Routes - No Layout */}
+        {/* Public Routes */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<LoginPage />} />
         <Route path="/intro" element={<IntroPage />} />
         
-        {/* Protected/App Routes - With Layout */}
+        {/* Main Routes */}
         <Route path="/*" element={
           <Layout>
             <Routes>
-              <Route path="/" element={<Home />} />
+              {/* If not logged in at root, redirect to login */}
+              <Route path="/" element={currentUser ? <Home /> : <Navigate to="/login" replace />} />
+              
               <Route path="/new-plan" element={<NewPlan />} />
               <Route path="/plan/:id" element={<PlanDetail />} />
               <Route path="/challenges" element={<Challenges />} />
@@ -55,7 +80,6 @@ function AppRoutes() {
               <Route path="/miscellaneous/:id" element={<MonthlyChallengeDetail />} />
               <Route path="/my-page" element={<MyPage />} />
               <Route path="/settings" element={<Settings />} />
-              <Route path="/search" element={<Challenges />} /> {/* Placeholder */}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Layout>

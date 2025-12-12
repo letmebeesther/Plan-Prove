@@ -1,16 +1,27 @@
+
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Camera, Lock, Globe, Hash, UploadCloud } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { Input } from '../components/common/Input';
 import { uploadImage } from '../services/storageService';
+import { createChallenge } from '../services/dbService';
+import { useAuth } from '../contexts/AuthContext';
 
 const categories = ['운동', '건강관리', '어학', '자격증', '공부루틴', '커리어스킬', '생활루틴', '재정관리', '취미', '독서'];
 
 export function NewChallenge() {
   const navigate = useNavigate();
-  const [isPublic, setIsPublic] = useState(true);
+  const { currentUser } = useAuth();
+  
+  // Form State
+  const [title, setTitle] = useState('');
+  const [statusMessage, setStatusMessage] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState(categories[0]);
   const [tags, setTags] = useState('');
+  const [isPublic, setIsPublic] = useState(true);
+  
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -26,6 +37,9 @@ export function NewChallenge() {
 
   const handleSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
+      if (!currentUser) return alert('로그인이 필요합니다.');
+      if (!title || !description) return alert('제목과 설명은 필수입니다.');
+
       setIsSubmitting(true);
       
       try {
@@ -34,15 +48,30 @@ export function NewChallenge() {
               imageUrl = await uploadImage(selectedFile, 'challenges');
           } else {
               // Fallback random image if no file uploaded
-              imageUrl = `https://picsum.photos/400/200?random=${Date.now()}`;
+              imageUrl = `https://picsum.photos/800/400?random=${Date.now()}`;
           }
 
-          // Note: In a real implementation, you would call createChallenge(data) from dbService here.
-          // For now, we simulate success.
-          console.log('Challenge Created with Image:', imageUrl);
+          const challengeData = {
+              title,
+              description,
+              statusMessage,
+              category,
+              imageUrl,
+              tags: tags.split(',').map(t => t.trim()).filter(t => t),
+              isPublic,
+              host: { 
+                  id: currentUser.id, 
+                  nickname: currentUser.nickname, 
+                  avatarUrl: currentUser.avatarUrl,
+                  trustScore: currentUser.trustScore
+              },
+              participantIds: [currentUser.id]
+          };
+
+          const newChallengeId = await createChallenge(challengeData);
           
           alert('도전방이 생성되었습니다!');
-          navigate('/challenges');
+          navigate(`/challenges/${newChallengeId}`);
       } catch (error) {
           console.error(error);
           alert('도전방 생성 실패');
@@ -88,21 +117,43 @@ export function NewChallenge() {
                 </div>
             </div>
 
-            <Input label="방 제목 (FR-147)" placeholder="예: 매일 아침 6시 기상 챌린지" required />
+            <Input 
+                label="방 제목 (FR-147)" 
+                placeholder="예: 매일 아침 6시 기상 챌린지" 
+                required 
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+            />
             
             <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1.5">상태 메시지 (FR-147)</label>
-                <input type="text" placeholder="예: 일찍 일어나는 새가 되어보자!" className="w-full rounded-xl border-gray-300 p-3 text-sm focus:ring-primary-500 focus:border-primary-500" />
+                <input 
+                    type="text" 
+                    placeholder="예: 일찍 일어나는 새가 되어보자!" 
+                    className="w-full rounded-xl border-gray-300 p-3 text-sm focus:ring-primary-500 focus:border-primary-500" 
+                    value={statusMessage}
+                    onChange={(e) => setStatusMessage(e.target.value)}
+                />
             </div>
 
             <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1.5">방 설명 (FR-147)</label>
-                <textarea rows={4} placeholder="어떤 방식으로 진행되는지 자세히 적어주세요." className="w-full rounded-xl border-gray-300 p-3 text-sm focus:ring-primary-500 focus:border-primary-500 resize-none" />
+                <textarea 
+                    rows={4} 
+                    placeholder="어떤 방식으로 진행되는지 자세히 적어주세요." 
+                    className="w-full rounded-xl border-gray-300 p-3 text-sm focus:ring-primary-500 focus:border-primary-500 resize-none" 
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                />
             </div>
 
             <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1.5">카테고리 (FR-149)</label>
-                <select className="w-full rounded-xl border-gray-300 p-3 text-sm focus:ring-primary-500 focus:border-primary-500 bg-white">
+                <select 
+                    className="w-full rounded-xl border-gray-300 p-3 text-sm focus:ring-primary-500 focus:border-primary-500 bg-white"
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                >
                     {categories.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
             </div>

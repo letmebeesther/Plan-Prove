@@ -9,6 +9,8 @@ import {
   signOut, 
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile,
   setPersistence,
   browserLocalPersistence,
   User as FirebaseUser 
@@ -23,7 +25,9 @@ interface AuthContextType {
   signInWithFacebook: () => Promise<void>;
   signupWithEmail: (email: string, password: string, nickname: string) => Promise<void>;
   loginWithEmail: (email: string, password: string) => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -63,6 +67,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setCurrentUser({ id: firebaseUser.uid, ...userSnapshot.data() } as User);
             } else {
               // Create profile if doesn't exist (e.g. first social login)
+              // Note: For email signup, we handle creation explicitly to ensure nickname is correct
+              // This block catches social logins or cases where DB doc is missing
               const newUser: User = {
                 id: firebaseUser.uid,
                 nickname: firebaseUser.displayName || '익명 탐험가',
@@ -102,6 +108,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return unsubscribe;
   }, []);
 
+  const refreshProfile = async () => {
+    if (auth.currentUser) {
+       try {
+           const userDocRef = doc(db, 'users', auth.currentUser.uid);
+           const userSnapshot = await getDoc(userDocRef);
+           if (userSnapshot.exists()) {
+              setCurrentUser({ id: auth.currentUser.uid, ...userSnapshot.data() } as User);
+           }
+       } catch (e) {
+           console.error("Failed to refresh profile:", e);
+       }
+    }
+  };
+
   const signInWithGoogle = async () => {
     try {
         const provider = new GoogleAuthProvider();
@@ -127,6 +147,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const firebaseUser = userCredential.user;
         
+        // Update Profile immediately
+        await updateProfile(firebaseUser, { displayName: nickname });
+
         // Create User Profile in Firestore
         const newUser: User = {
           id: firebaseUser.uid,
@@ -142,7 +165,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
         
         await setDoc(doc(db, 'users', firebaseUser.uid), newUser);
-        // Current user will be updated by onAuthStateChanged
+        
+        // Manually update state to ensure correct nickname is reflected immediately
+        // preventing race condition with onAuthStateChanged
+        setCurrentUser(newUser);
     } catch (error) {
         console.error("Email Signup Error:", error);
         throw error;
@@ -158,6 +184,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const resetPassword = async (email: string) => {
+    try {
+      await sendPasswordResetEmail(auth, email);
+    } catch (error) {
+      console.error("Reset Password Error:", error);
+      throw error;
+    }
+  };
+
   const logout = async () => {
     await signOut(auth);
   };
@@ -170,7 +205,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       signInWithFacebook, 
       signupWithEmail,
       loginWithEmail,
-      logout 
+      resetPassword,
+      logout,
+      refreshProfile
     }}>
       {!loading && children}
     </AuthContext.Provider>
