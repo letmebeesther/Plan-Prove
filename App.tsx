@@ -16,14 +16,19 @@ import { Miscellaneous } from './pages/Miscellaneous';
 import { MonthlyChallengeDetail } from './pages/MonthlyChallengeDetail';
 import { Settings } from './pages/Settings';
 import { PlanDetail } from './pages/PlanDetail';
+import { PlanSearch } from './pages/PlanSearch';
+import { PlanBoard } from './pages/PlanBoard';
+import { UserProfile } from './pages/UserProfile';
+import { ChatPage } from './pages/ChatPage';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Flame } from 'lucide-react';
 
 interface SplashScreenProps {
   onFinish: () => void;
+  isLoading?: boolean;
 }
 
-function SplashScreen({ onFinish }: SplashScreenProps) {
+function SplashScreen({ onFinish, isLoading }: SplashScreenProps) {
   return (
     <div className="fixed inset-0 bg-white z-[9999] flex flex-col items-center justify-center animate-fade-in p-4">
         {/* Changed from animate-bounce to animate-fade-up for a more sincere, steady look */}
@@ -33,13 +38,20 @@ function SplashScreen({ onFinish }: SplashScreenProps) {
         <h1 className="text-4xl font-bold text-gray-900 mb-2 tracking-tight animate-fade-in" style={{ animationDelay: '0.3s' }}>Plan & Prove</h1>
         <p className="text-gray-500 font-medium text-lg animate-fade-in mb-16 text-center" style={{ animationDelay: '0.6s' }}>도전하고 계획하고 성공하세요</p>
         
-        <button 
-            onClick={onFinish}
-            className="px-10 py-4 bg-primary-600 hover:bg-primary-700 text-white text-lg font-bold rounded-2xl shadow-xl shadow-primary-200 transition-all hover:scale-105 active:scale-95 animate-fade-in flex items-center gap-2"
-            style={{ animationDelay: '1.2s', animationFillMode: 'backwards' }}
-        >
-            JUST DO IT!
-        </button>
+        {isLoading ? (
+            <div className="mt-4 flex flex-col items-center gap-3 animate-fade-in">
+                <div className="animate-spin rounded-full h-8 w-8 border-4 border-gray-100 border-t-primary-600"></div>
+                <p className="text-sm text-gray-400 font-medium">로그인 정보를 확인 중입니다...</p>
+            </div>
+        ) : (
+            <button 
+                onClick={onFinish}
+                className="px-10 py-4 bg-primary-600 hover:bg-primary-700 text-white text-lg font-bold rounded-2xl shadow-xl shadow-primary-200 transition-all hover:scale-105 active:scale-95 animate-fade-in flex items-center gap-2"
+                style={{ animationDelay: '0.2s', animationFillMode: 'backwards' }}
+            >
+                JUST DO IT!
+            </button>
+        )}
     </div>
   );
 }
@@ -51,7 +63,7 @@ function AppRoutes() {
   // Removed automatic timeout effect. User must click the button.
 
   if (showSplash || authLoading) {
-    return <SplashScreen onFinish={() => setShowSplash(false)} />;
+    return <SplashScreen onFinish={() => setShowSplash(false)} isLoading={authLoading} />;
   }
 
   return (
@@ -80,6 +92,16 @@ function AppRoutes() {
               <Route path="/miscellaneous/:id" element={<MonthlyChallengeDetail />} />
               <Route path="/my-page" element={<MyPage />} />
               <Route path="/settings" element={<Settings />} />
+              
+              {/* Search & Board Routes */}
+              <Route path="/search" element={<PlanSearch />} />
+              <Route path="/plans" element={<PlanBoard />} />
+              <Route path="/plans/search" element={<PlanSearch />} />
+
+              {/* User & Chat Routes */}
+              <Route path="/user/:id" element={<UserProfile />} />
+              <Route path="/chat/:roomId" element={<ChatPage />} />
+
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Layout>

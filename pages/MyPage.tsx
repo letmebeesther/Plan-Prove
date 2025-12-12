@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Avatar } from '../components/Avatar';
 import { 
@@ -69,6 +70,7 @@ export function MyPage() {
     const { currentUser, refreshProfile } = useAuth();
     const [activeTab, setActiveTab] = useState<TabType>('PLANS');
     const [subTab, setSubTab] = useState<SubTabType>('ACTIVE');
+    const [scrapFilter, setScrapFilter] = useState<'ALL' | 'PLAN' | 'SUBGOAL' | 'POST'>('ALL');
     
     // Real Data State
     const [activePlans, setActivePlans] = useState<Plan[]>([]);
@@ -164,6 +166,20 @@ export function MyPage() {
             setIsSavingProfile(false);
         }
     };
+
+    // Filter Logic for Scraps
+    const filteredScraps = scraps.filter(item => {
+        if (scrapFilter === 'ALL') return true;
+        return item.type === scrapFilter;
+    });
+
+    // Loading Spinner Component
+    const LoadingState = () => (
+        <div className="py-20 flex flex-col items-center justify-center text-gray-400">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mb-3"></div>
+            <p className="text-sm">데이터를 로딩 중입니다</p>
+        </div>
+    );
 
     if (!currentUser) return <div className="p-10 text-center">로그인이 필요합니다.</div>;
 
@@ -281,7 +297,7 @@ export function MyPage() {
                             {/* Active Plans (FR-244 ~ FR-250) */}
                             {subTab === 'ACTIVE' && (
                                 <div className="grid gap-4">
-                                    {isLoading ? <div className="text-center py-4">로딩 중...</div> : activePlans.length === 0 ? (
+                                    {isLoading ? <LoadingState /> : activePlans.length === 0 ? (
                                         <div className="text-center py-10 text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
                                             진행 중인 계획이 없습니다.
                                         </div>
@@ -310,7 +326,7 @@ export function MyPage() {
                             {/* Past Plans (FR-251 ~ FR-256) */}
                             {subTab === 'PAST' && (
                                 <div className="grid gap-4">
-                                    {isLoading ? <div className="text-center py-4">로딩 중...</div> : pastPlans.length === 0 ? (
+                                    {isLoading ? <LoadingState /> : pastPlans.length === 0 ? (
                                         <div className="text-center py-10 text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
                                             지난 계획이 없습니다.
                                         </div>
@@ -361,7 +377,7 @@ export function MyPage() {
                             {/* Together Challenges (FR-279 ~ FR-285) */}
                             {subTab === 'TOGETHER' && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {isLoading ? <div className="text-center py-4 col-span-2">로딩 중...</div> : joinedChallenges.length === 0 ? (
+                                    {isLoading ? <div className="col-span-2"><LoadingState /></div> : joinedChallenges.length === 0 ? (
                                         <div className="col-span-2 text-center py-10 text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
                                             참여 중인 챌린지가 없습니다. 새로운 도전을 시작해보세요!
                                         </div>
@@ -419,28 +435,60 @@ export function MyPage() {
 
                     {/* --- 10.7 Scraps Tab (FR-267 ~ FR-271) --- */}
                     {activeTab === 'SCRAPS' && (
-                        <div className="space-y-4">
-                            {isLoading ? <div className="text-center py-4">로딩 중...</div> : scraps.length === 0 ? (
-                                <div className="text-center py-10 text-gray-400">스크랩한 항목이 없습니다.</div>
-                            ) : scraps.map(item => (
-                                <div key={item.id} className="border border-gray-100 rounded-2xl p-4 hover:border-primary-200 transition-colors group relative bg-white">
-                                    <button className="absolute top-4 right-4 text-gray-300 hover:text-red-500 p-1"><Trash2 className="w-4 h-4" /></button>
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                                            item.type === 'PLAN' ? 'bg-blue-100 text-blue-700' : 
-                                            item.type === 'SUBGOAL' ? 'bg-purple-100 text-purple-700' : 'bg-orange-100 text-orange-700'
-                                        }`}>
-                                            {item.type === 'PLAN' ? '계획' : item.type === 'SUBGOAL' ? '중간목표' : '게시글'}
-                                        </span>
-                                        {item.category && <span className="text-[10px] text-gray-400">| {item.category}</span>}
-                                        <span className="text-[10px] text-gray-400">• {item.savedAt}</span>
+                        <div>
+                            {/* Scrap Filter Tabs */}
+                            <div className="flex gap-2 mb-6 p-1 bg-gray-50 rounded-xl w-fit overflow-x-auto no-scrollbar">
+                                {[
+                                    { id: 'ALL', label: '전체' },
+                                    { id: 'PLAN', label: '계획' },
+                                    { id: 'SUBGOAL', label: '중간목표' },
+                                    { id: 'POST', label: '게시글' }
+                                ].map(f => (
+                                    <button
+                                        key={f.id}
+                                        onClick={() => setScrapFilter(f.id as any)}
+                                        className={`px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${
+                                            scrapFilter === f.id 
+                                            ? 'bg-white shadow-sm text-gray-900' 
+                                            : 'text-gray-500 hover:text-gray-700'
+                                        }`}
+                                    >
+                                        {f.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <div className="space-y-4">
+                                {isLoading ? <LoadingState /> : filteredScraps.length === 0 ? (
+                                    <div className="text-center py-10 text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                                        {scrapFilter === 'ALL' ? '스크랩한 항목이 없습니다.' : `${scrapFilter === 'PLAN' ? '계획' : scrapFilter === 'SUBGOAL' ? '중간목표' : '게시글'} 스크랩이 없습니다.`}
                                     </div>
-                                    <h3 className="font-bold text-gray-900 mb-1 group-hover:text-primary-600 cursor-pointer flex items-center gap-1">
-                                        {item.title} <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                    </h3>
-                                    <p className="text-sm text-gray-500 line-clamp-2">{item.content}</p>
-                                </div>
-                            ))}
+                                ) : filteredScraps.map(item => (
+                                    <div 
+                                        key={item.id} 
+                                        className="border border-gray-100 rounded-2xl p-4 hover:border-primary-200 transition-colors group relative bg-white"
+                                        onClick={() => {
+                                            if (item.type === 'PLAN') navigate(`/plan/${item.originalId}`);
+                                        }}
+                                    >
+                                        <button className="absolute top-4 right-4 text-gray-300 hover:text-red-500 p-1"><Trash2 className="w-4 h-4" /></button>
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                                item.type === 'PLAN' ? 'bg-blue-100 text-blue-700' : 
+                                                item.type === 'SUBGOAL' ? 'bg-purple-100 text-purple-700' : 'bg-orange-100 text-orange-700'
+                                            }`}>
+                                                {item.type === 'PLAN' ? '계획' : item.type === 'SUBGOAL' ? '중간목표' : '게시글'}
+                                            </span>
+                                            {item.category && <span className="text-[10px] text-gray-400">| {item.category}</span>}
+                                            <span className="text-[10px] text-gray-400">• {item.savedAt}</span>
+                                        </div>
+                                        <h3 className={`font-bold text-gray-900 mb-1 flex items-center gap-1 ${item.type === 'PLAN' ? 'group-hover:text-primary-600 cursor-pointer' : ''}`}>
+                                            {item.title} {item.type === 'PLAN' && <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />}
+                                        </h3>
+                                        <p className="text-sm text-gray-500 line-clamp-2">{item.content}</p>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     )}
 

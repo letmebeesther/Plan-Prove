@@ -44,6 +44,7 @@ export function LoginPage() {
   const mapAuthError = (errCode: string) => {
     switch (errCode) {
       case 'auth/invalid-credential':
+      case 'auth/invalid-login-credentials':
       case 'auth/user-not-found':
       case 'auth/wrong-password':
         return '이메일 또는 비밀번호가 올바르지 않습니다.';
@@ -77,7 +78,13 @@ export function LoginPage() {
       }
       // Success is handled by the useEffect redirecting to /
     } catch (err: any) {
-      console.error(err);
+      // Suppress console error for validation issues
+      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+          // Expected auth errors
+      } else {
+          console.error(err);
+      }
+
       if (err.message === '닉네임을 입력해주세요.' || err.message === '비밀번호는 6자 이상이어야 합니다.') {
           setError(err.message);
       } else {

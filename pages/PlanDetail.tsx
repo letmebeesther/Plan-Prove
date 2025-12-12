@@ -6,13 +6,13 @@ import {
     ChevronDown, ChevronUp, CheckCircle2, Circle, AlertTriangle, 
     Camera, Video, FileText, Smartphone, Send, Star, ShieldCheck, X,
     Plus, Trophy, UploadCloud, PenTool, Megaphone, Clock, Sparkles, RefreshCw,
-    Info, Activity, FileCheck, Hash, Mail, Link as LinkIcon
+    Info, Activity, FileCheck, Hash, Mail, Link as LinkIcon, UserPlus, Check
 } from 'lucide-react';
 import { Plan, Evidence, SubGoal } from '../types';
 import { 
     fetchPlanById, submitEvidence, deletePlan, updateSubGoalStatus, 
     updateRetrospective, addSubGoal, deleteSubGoal, updateSubGoalDetails,
-    deleteEvidence, updateEvidence 
+    deleteEvidence, updateEvidence, toggleFollowUser, toggleScrap, fetchMyScraps
 } from '../services/dbService';
 import { uploadImage, calculateFileHash } from '../services/storageService';
 import { generateAIEvidenceSuggestions } from '../services/geminiService'; // Import AI service
@@ -21,6 +21,7 @@ import { Button } from '../components/common/Button';
 import { ProgressBar } from '../components/common/ProgressBar';
 import { Avatar } from '../components/Avatar';
 import { Input } from '../components/common/Input';
+import { ConfirmDialog } from '../components/common/ConfirmDialog';
 
 export function PlanDetail() {
     const { id } = useParams<{id: string}>();
@@ -31,10 +32,22 @@ export function PlanDetail() {
     const [loading, setLoading] = useState(true);
     const [expandedSubGoal, setExpandedSubGoal] = useState<number | null>(0);
     
+    // Social State
+    const [isFollowing, setIsFollowing] = useState(false);
+    const [isPlanScrapped, setIsPlanScrapped] = useState(false);
+    const [scrappedSubGoals, setScrappedSubGoals] = useState<Set<string>>(new Set());
+    
     // Modal States
     const [showCertModal, setShowCertModal] = useState(false);
     const [showFailureModal, setShowFailureModal] = useState(false);
     const [showRetroModal, setShowRetroModal] = useState(false);
+    const [confirmConfig, setConfirmConfig] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        onConfirm: () => void;
+        isDangerous?: boolean;
+    }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
     
     // FR-081 Evidence Detail Modal
     const [showEvidenceDetail, setShowEvidenceDetail] = useState<Evidence | null>(null);
@@ -75,14 +88,33 @@ export function PlanDetail() {
     // Retrospective State
     const [retroContent, setRetroContent] = useState('');
 
-    // File Upload State
-    const [selectedFile, setSelectedFile] = useState<File | null>(null);
-    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    // File Upload State (Modified for Multiple Files)
+    const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+    const [previewUrls, setPreviewUrls] = useState<string[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         loadPlan();
     }, [id]);
+
+    // Load initial scrap state
+    useEffect(() => {
+        const loadScrapState = async () => {
+            if (currentUser && id) {
+                const scraps = await fetchMyScraps(currentUser.id);
+                // Check Plan Scrap
+                const planScrap = scraps.find(s => s.type === 'PLAN' && s.originalId === id);
+                setIsPlanScrapped(!!planScrap);
+
+                // Check SubGoal Scraps
+                const subGoalScraps = scraps
+                    .filter(s => s.type === 'SUBGOAL')
+                    .map(s => s.originalId);
+                setScrappedSubGoals(new Set(subGoalScraps));
+            }
+        };
+        loadScrapState();
+    }, [currentUser, id]);
 
     const loadPlan = async () => {
         if (!id) return;
@@ -96,26 +128,122 @@ export function PlanDetail() {
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            setSelectedFile(file);
-            setPreviewUrl(URL.createObjectURL(file));
+        if (e.target.files) {
+            const newFiles = Array.from(e.target.files) as File[];
+            
+            if (certType === 'VIDEO') {
+                // Video allows only 1 file
+                if (newFiles.length > 0) {
+                    const file = newFiles[0];
+                    setSelectedFiles([file]);
+                    setPreviewUrls([URL.createObjectURL(file)]);
+                }
+            } else {
+                // Photos allow up to 3 files
+                const totalFiles = [...selectedFiles, ...newFiles];
+                if (totalFiles.length > 3) {
+                    alert("사진은 최대 3장까지 첨부 가능합니다.");
+                    // Keep existing, or add up to 3? Let's cap at 3
+                    const cappedFiles = totalFiles.slice(0, 3);
+                    setSelectedFiles(cappedFiles);
+                    setPreviewUrls(cappedFiles.map(f => URL.createObjectURL(f)));
+                } else {
+                    setSelectedFiles(totalFiles);
+                    setPreviewUrls(totalFiles.map(f => URL.createObjectURL(f)));
+                }
+            }
         }
+    };
+
+    const handleRemoveFile = (index: number) => {
+        const newFiles = selectedFiles.filter((_, i) => i !== index);
+        const newPreviews = previewUrls.filter((_, i) => i !== index);
+        setSelectedFiles(newFiles);
+        setPreviewUrls(newPreviews);
     };
 
     // --- Action Handlers ---
 
+    const handleFollow = async () => {
+        if (!currentUser || !plan) return alert('로그인이 필요합니다.');
+        if (currentUser.id === plan.author.id) return alert('자기 자신을 팔로우할 수 없습니다.');
+        
+        try {
+            await toggleFollowUser(currentUser.id, plan.author.id);
+            setIsFollowing(!isFollowing); // Toggle visual state optimistically
+            alert(isFollowing ? '언팔로우했습니다.' : `${plan.author.nickname}님을 팔로우했습니다!`);
+        } catch (e) {
+            alert('팔로우 처리 중 오류가 발생했습니다.');
+        }
+    };
+
+    const handleScrapPlan = async () => {
+        if (!currentUser || !plan || !id) return alert('로그인이 필요합니다.');
+        try {
+            const isAdded = await toggleScrap(currentUser.id, {
+                type: 'PLAN',
+                title: plan.title,
+                content: plan.description,
+                originalId: id
+            });
+            setIsPlanScrapped(isAdded);
+            alert(isAdded ? '계획을 스크랩했습니다. 마이페이지에서 확인하세요.' : '스크랩을 취소했습니다.');
+        } catch (e) {
+            alert('스크랩 처리 중 오류가 발생했습니다.');
+        }
+    };
+
+    const handleScrapSubGoal = async (e: React.MouseEvent, subGoal: SubGoal) => {
+        e.stopPropagation(); // Important: Stop accordion toggle
+        if (!currentUser || !plan) return alert('로그인이 필요합니다.');
+
+        // Optimistic UI Update
+        const isCurrentlyScrapped = scrappedSubGoals.has(subGoal.id);
+        const newSet = new Set(scrappedSubGoals);
+        if (isCurrentlyScrapped) {
+            newSet.delete(subGoal.id);
+        } else {
+            newSet.add(subGoal.id);
+        }
+        setScrappedSubGoals(newSet);
+
+        try {
+            const isAdded = await toggleScrap(currentUser.id, {
+                type: 'SUBGOAL',
+                title: subGoal.title,
+                content: `From plan: ${plan.title}`,
+                originalId: subGoal.id
+            });
+            
+            // Sync logic if needed (usually consistent with toggle)
+            if (isAdded !== !isCurrentlyScrapped) {
+                // Restore if DB op returned different state
+                setScrappedSubGoals(scrappedSubGoals);
+            }
+        } catch (e) {
+            setScrappedSubGoals(scrappedSubGoals); // Revert on error
+            alert('오류가 발생했습니다.');
+        }
+    };
+
     const handleDeletePlan = async () => {
         if (!id) return;
-        if (window.confirm('정말로 이 계획을 삭제하시겠습니까? 삭제된 데이터는 복구할 수 없습니다.')) {
-            try {
-                await deletePlan(id);
-                alert('계획이 삭제되었습니다.');
-                navigate('/');
-            } catch (e) {
-                alert('삭제 중 오류가 발생했습니다.');
+        setConfirmConfig({
+            isOpen: true,
+            title: '계획 삭제',
+            message: '정말로 이 계획을 삭제하시겠습니까?\n삭제된 데이터는 복구할 수 없습니다.',
+            isDangerous: true,
+            onConfirm: async () => {
+                try {
+                    await deletePlan(id);
+                    alert('계획이 삭제되었습니다.');
+                    navigate('/');
+                } catch (e) {
+                    alert('삭제 중 오류가 발생했습니다.');
+                }
+                setConfirmConfig(prev => ({ ...prev, isOpen: false }));
             }
-        }
+        });
     };
 
     const handleAddSubGoalSubmit = async () => {
@@ -150,14 +278,21 @@ export function PlanDetail() {
 
     const handleDeleteSubGoal = async (index: number) => {
         if (!id) return;
-        if (window.confirm('이 중간 목표를 삭제하시겠습니까? (FR-065)')) {
-            try {
-                await deleteSubGoal(id, index);
-                await loadPlan();
-            } catch (e) {
-                alert('오류가 발생했습니다.');
+        setConfirmConfig({
+            isOpen: true,
+            title: '중간 목표 삭제',
+            message: '이 중간 목표를 삭제하시겠습니까? (FR-065)',
+            isDangerous: true,
+            onConfirm: async () => {
+                try {
+                    await deleteSubGoal(id, index);
+                    await loadPlan();
+                } catch (e) {
+                    alert('오류가 발생했습니다.');
+                }
+                setConfirmConfig(prev => ({ ...prev, isOpen: false }));
             }
-        }
+        });
     };
 
     const handleEditSubGoalOpen = (index: number, subGoal: SubGoal) => {
@@ -191,7 +326,9 @@ export function PlanDetail() {
         setLoadingExamples(true);
         setShowAIExamples(true);
         try {
-            const examples = await generateAIEvidenceSuggestions(subGoalTitle, subGoalDesc, currentUser?.hasWearable || false);
+            // Pass plan.executionTime to enforce clock rule if applicable
+            const timeContext = plan?.executionTime;
+            const examples = await generateAIEvidenceSuggestions(subGoalTitle, subGoalDesc, currentUser?.hasWearable || false, timeContext);
             setAiExamples(examples);
         } catch (e) {
             console.error(e);
@@ -239,11 +376,12 @@ export function PlanDetail() {
         alert(`인증 코드가 ${certEmail}로 전송되었습니다. (인증코드는 123456 입니다)`);
     };
 
-    const handleCertification = async () => {
+    const handleCertification = async (skipTimeCheck = false) => {
         if (!plan || selectedSubGoalIndex === null || !id) return;
         
-        if ((certType === 'PHOTO' || certType === 'BIOMETRIC' || certType === 'APP_CAPTURE') && !selectedFile) {
-            alert('인증 사진(또는 캡처)을 업로드해주세요.');
+        // Extended Check: Added VIDEO to required check
+        if ((certType === 'PHOTO' || certType === 'VIDEO' || certType === 'BIOMETRIC' || certType === 'APP_CAPTURE') && selectedFiles.length === 0) {
+            alert('인증 파일(사진 또는 영상)을 업로드해주세요.');
             return;
         }
         if (certType === 'EMAIL' && verificationCode !== '123456') {
@@ -257,17 +395,72 @@ export function PlanDetail() {
 
         setSubmitting(true);
         try {
-            let imageUrl: string | null = null;
-            let fileHash: string | null = null;
+            let uploadedUrls: string[] = [];
+            let fileHashes: string[] = [];
 
-            if (selectedFile && (certType === 'PHOTO' || certType === 'APP_CAPTURE' || certType === 'BIOMETRIC')) {
-                fileHash = await calculateFileHash(selectedFile);
-                imageUrl = await uploadImage(selectedFile, `evidence/${plan.id}`);
+            // Metadata Checks for Photo/Video
+            if (selectedFiles.length > 0 && (certType === 'PHOTO' || certType === 'VIDEO' || certType === 'APP_CAPTURE' || certType === 'BIOMETRIC')) {
+                
+                // 1. Hash Check (Duplicate Prevention) - Check all files
+                for (const file of selectedFiles) {
+                    const hash = await calculateFileHash(file);
+                    fileHashes.push(hash);
+                }
+                
+                const allEvidenceHashes = plan.subGoals.flatMap(sg => sg.evidences || []).flatMap(e => e.fileHashes || (e.fileHash ? [e.fileHash] : [])).filter(Boolean);
+                const isDuplicate = fileHashes.some(hash => allEvidenceHashes.includes(hash));
+                
+                if (isDuplicate) {
+                    alert('이미 제출된 인증물(중복 파일)이 포함되어 있습니다. 새로운 사진이나 영상을 사용해주세요.');
+                    setSubmitting(false);
+                    return;
+                }
+
+                // 2. Time Validation (Metadata Check) - Check first file
+                const targetTimeStr = plan.subGoals[selectedSubGoalIndex].dueTime || plan.executionTime;
+                
+                // Only enforce time check if time set and not skipped
+                if (!skipTimeCheck && targetTimeStr && (certType === 'PHOTO' || certType === 'VIDEO')) {
+                    const [targetH, targetM] = targetTimeStr.split(':').map(Number);
+                    
+                    const fileDate = new Date(selectedFiles[0].lastModified); // Check first file time
+                    const fileH = fileDate.getHours();
+                    const fileM = fileDate.getMinutes();
+
+                    // Convert to minutes from midnight
+                    const targetTotal = targetH * 60 + targetM;
+                    const fileTotal = fileH * 60 + fileM;
+
+                    let diff = Math.abs(fileTotal - targetTotal);
+                    
+                    // Allow 10 minutes tolerance
+                    if (!isNaN(diff) && diff > 10) {
+                        const formattedFileTime = `${String(fileH).padStart(2, '0')}:${String(fileM).padStart(2, '0')}`;
+                        setSubmitting(false);
+                        setConfirmConfig({
+                            isOpen: true,
+                            title: '⚠️ 시간 불일치 감지',
+                            message: `목표 시간: ${targetTimeStr}\n파일 시간: ${formattedFileTime}\n\n10분 이상 차이가 납니다.\n그래도 제출하시겠습니까? (신뢰도에 영향을 줄 수 있습니다)`,
+                            onConfirm: () => {
+                                setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+                                handleCertification(true); // Retry with skip flag
+                            },
+                            isDangerous: false
+                        });
+                        return;
+                    }
+                }
+
+                // Upload all files
+                for (const file of selectedFiles) {
+                    const url = await uploadImage(file, `evidence/${plan.id}`);
+                    uploadedUrls.push(url);
+                }
             }
 
             const aiStatus = Math.random() > 0.8 ? 'WARNING' : 'APPROVED'; 
 
-            // Dynamically construct the object to prevent 'undefined' values which Firestore rejects
+            // Dynamically construct the object
             const evidenceData: any = {
                 id: Date.now().toString(),
                 type: certType,
@@ -277,8 +470,15 @@ export function PlanDetail() {
                 feedback: aiStatus === 'WARNING' ? '검토가 필요합니다.' : '인증되었습니다!',
             };
 
-            if (imageUrl) evidenceData.url = imageUrl;
-            if (fileHash) evidenceData.fileHash = fileHash;
+            if (uploadedUrls.length > 0) {
+                evidenceData.url = uploadedUrls[0]; // Primary URL for backward compatibility
+                evidenceData.imageUrls = uploadedUrls; // Store all URLs
+            }
+            if (fileHashes.length > 0) {
+                evidenceData.fileHash = fileHashes[0];
+                evidenceData.fileHashes = fileHashes;
+            }
+            
             if (certType === 'EMAIL' && certEmail) evidenceData.verifiedEmail = certEmail;
             if (certType === 'API') {
                 if (certApiProvider) evidenceData.apiProvider = certApiProvider;
@@ -292,17 +492,17 @@ export function PlanDetail() {
             
             setShowCertModal(false);
             setCertContent('');
-            setSelectedFile(null);
-            setPreviewUrl(null);
+            setSelectedFiles([]);
+            setPreviewUrls([]);
             setCertEmail('');
             setVerificationCode('');
             setEmailVerificationSent(false);
             setCertApiProvider('');
             setCertApiRef('');
             alert('인증이 제출되었습니다!');
-        } catch (e) {
-            console.error(e);
-            alert('인증 제출 실패');
+        } catch (e: any) {
+            console.error("Submission Error:", e);
+            alert(`인증 제출 실패: ${e.message || '알 수 없는 오류'}`);
         } finally {
             setSubmitting(false);
         }
@@ -310,18 +510,37 @@ export function PlanDetail() {
 
     const handleDeleteEvidence = async (evidenceId: string) => {
         if (!id || viewingEvidenceSubGoalIndex === null) return;
-        if (window.confirm('이 증거물을 삭제하시겠습니까? (FR-090)')) {
-            try {
-                await deleteEvidence(id, viewingEvidenceSubGoalIndex, evidenceId);
-                setShowEvidenceDetail(null);
-                await loadPlan();
-            } catch (e) {
-                alert('삭제 실패');
+        setConfirmConfig({
+            isOpen: true,
+            title: '증거물 삭제',
+            message: '이 증거물을 삭제하시겠습니까? (FR-090)',
+            isDangerous: true,
+            onConfirm: async () => {
+                try {
+                    await deleteEvidence(id, viewingEvidenceSubGoalIndex, evidenceId);
+                    setShowEvidenceDetail(null);
+                    await loadPlan();
+                } catch (e) {
+                    alert('삭제 실패');
+                }
+                setConfirmConfig(prev => ({ ...prev, isOpen: false }));
             }
-        }
+        });
     };
 
-    if (loading) return <div className="p-10 text-center">Loading...</div>;
+    const handleSwitchToTextVerification = () => {
+        setCertType('TEXT');
+        setCertContent('[증거 미확보] 실천은 완료했으나 촬영을 하지 못했습니다. 상세 상황: ');
+        setSelectedFiles([]);
+        setPreviewUrls([]);
+    };
+
+    if (loading) return (
+        <div className="min-h-[80vh] flex flex-col items-center justify-center">
+             <div className="animate-spin rounded-full h-12 w-12 border-4 border-gray-200 border-t-primary-600 mb-4"></div>
+             <p className="text-gray-500 font-medium animate-pulse">계획을 불러오고 있습니다...</p>
+        </div>
+    );
     if (!plan) return <div className="p-10 text-center">Plan not found</div>;
 
     const isAuthor = currentUser?.id === plan.author.id;
@@ -337,6 +556,8 @@ export function PlanDetail() {
 
     return (
         <div className="max-w-5xl mx-auto pb-20 animate-fade-in space-y-8">
+            {/* ... (Hero Section, Description, Retrospective, Progress Dashboard, Sub-Goals List kept same) ... */}
+            
             {/* Hero Section */}
             <div className="relative w-full h-64 md:h-80 rounded-3xl overflow-hidden shadow-lg group">
                 <img 
@@ -351,8 +572,12 @@ export function PlanDetail() {
                     <button className="p-2 bg-black/30 backdrop-blur-md rounded-full text-white hover:bg-black/50 transition-colors">
                         <Share2 className="w-5 h-5" />
                     </button>
-                    <button className="p-2 bg-black/30 backdrop-blur-md rounded-full text-white hover:bg-black/50 transition-colors">
-                        <Bookmark className="w-5 h-5" />
+                    <button 
+                        onClick={handleScrapPlan}
+                        className={`p-2 bg-black/30 backdrop-blur-md rounded-full text-white hover:bg-black/50 transition-colors ${isPlanScrapped ? 'text-yellow-400 fill-yellow-400' : ''}`}
+                        title="계획 스크랩"
+                    >
+                        <Bookmark className={`w-5 h-5 ${isPlanScrapped ? 'fill-current text-yellow-400' : ''}`} />
                     </button>
                     {isAuthor && (
                         <div className="relative group">
@@ -381,6 +606,20 @@ export function PlanDetail() {
                         <div className="flex items-center gap-2">
                             <Avatar src={plan.author.avatarUrl} size="sm" border />
                             <span>{plan.author.nickname}</span>
+                            {/* Follow Button (FR-PLAN-001) */}
+                            {!isAuthor && (
+                                <button 
+                                    onClick={handleFollow}
+                                    className={`ml-1 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold transition-colors ${
+                                        isFollowing 
+                                        ? 'bg-white/20 text-white hover:bg-white/30' 
+                                        : 'bg-primary-500 text-white hover:bg-primary-600 shadow-sm'
+                                    }`}
+                                >
+                                    {isFollowing ? <Check className="w-3 h-3" /> : <UserPlus className="w-3 h-3" />}
+                                    {isFollowing ? 'Following' : 'Follow'}
+                                </button>
+                            )}
                         </div>
                         <span className="hidden sm:inline text-white/40">|</span>
                         <div className="flex items-center gap-1.5 opacity-90">
@@ -509,6 +748,7 @@ export function PlanDetail() {
                     {plan.subGoals.map((subGoal, idx) => {
                         const isExpanded = expandedSubGoal === idx;
                         const isCompleted = subGoal.status === 'completed';
+                        const isScrapped = scrappedSubGoals.has(subGoal.id);
                         
                         return (
                             <div key={idx} className={`bg-white rounded-3xl border transition-all duration-300 overflow-hidden ${isExpanded ? 'border-primary-200 shadow-md ring-1 ring-primary-100' : 'border-gray-100 hover:border-gray-300'}`}>
@@ -524,8 +764,18 @@ export function PlanDetail() {
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-3">
-                                        {isExpanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                                    <div className="flex items-center gap-1">
+                                        {/* SubGoal Scrap Button (FR-PLAN-005) */}
+                                        <button 
+                                            onClick={(e) => handleScrapSubGoal(e, subGoal)}
+                                            className="relative z-10 p-2 hover:bg-gray-100 rounded-full transition-all group/btn"
+                                            title="중간목표 스크랩"
+                                        >
+                                            <Bookmark className={`w-4 h-4 ${isScrapped ? 'fill-yellow-400 text-yellow-400' : 'text-gray-400 group-hover/btn:text-yellow-400'}`} />
+                                        </button>
+                                        <div className="p-2">
+                                            {isExpanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                                        </div>
                                     </div>
                                 </div>
 
@@ -547,6 +797,37 @@ export function PlanDetail() {
                                                 <span key={t} className="text-[10px] px-2 py-0.5 bg-gray-200 text-gray-600 rounded-full font-bold">{t}</span>
                                             ))}
                                         </div>
+
+                                        {/* View Evidence Button */}
+                                        {subGoal.evidences && subGoal.evidences.length > 0 && (
+                                            <div className="mb-3">
+                                                <div className="text-xs font-bold text-gray-600 mb-2">인증 기록 ({subGoal.evidences.length})</div>
+                                                <div className="flex gap-2 overflow-x-auto pb-2">
+                                                    {subGoal.evidences.map((evidence, eIdx) => (
+                                                        <div 
+                                                            key={evidence.id} 
+                                                            className="flex-shrink-0 w-20 h-20 bg-gray-200 rounded-lg overflow-hidden cursor-pointer border border-gray-300 hover:border-primary-500 relative group/evidence"
+                                                            onClick={() => { setShowEvidenceDetail(evidence); setViewingEvidenceSubGoalIndex(idx); }}
+                                                        >
+                                                            {evidence.type === 'PHOTO' && (evidence.url || (evidence.imageUrls && evidence.imageUrls[0])) ? (
+                                                                <>
+                                                                    <img src={evidence.url || evidence.imageUrls![0]} alt="cert" className="w-full h-full object-cover" />
+                                                                    {evidence.imageUrls && evidence.imageUrls.length > 1 && (
+                                                                        <div className="absolute top-1 right-1 bg-black/60 text-white text-[10px] px-1 rounded">
+                                                                            +{evidence.imageUrls.length - 1}
+                                                                        </div>
+                                                                    )}
+                                                                </>
+                                                            ) : (
+                                                                <div className="w-full h-full flex items-center justify-center text-xs text-gray-500 font-bold bg-white p-1 text-center">
+                                                                    {evidence.type}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
 
                                         {/* Action Buttons */}
                                         {isAuthor && subGoal.status === 'pending' && (
@@ -579,9 +860,7 @@ export function PlanDetail() {
                 </div>
             </div>
 
-            {/* --- Modals --- */}
-
-            {/* Certification Modal (Updated filtering) */}
+            {/* Certification Modal */}
             {showCertModal && selectedSubGoalIndex !== null && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-fade-in" onClick={() => setShowCertModal(false)}>
                     <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -612,7 +891,12 @@ export function PlanDetail() {
                              .map(type => (
                                  <button
                                     key={type.id}
-                                    onClick={() => setCertType(type.id as any)}
+                                    onClick={() => {
+                                        setCertType(type.id as any);
+                                        // Reset files if switching type
+                                        setSelectedFiles([]);
+                                        setPreviewUrls([]);
+                                    }}
                                     className={`flex flex-col items-center justify-center py-3 rounded-xl text-xs font-bold transition-all border ${
                                         certType === type.id 
                                         ? 'bg-primary-50 text-primary-600 border-primary-200 ring-1 ring-primary-500' 
@@ -625,25 +909,70 @@ export function PlanDetail() {
                         </div>
 
                         {/* Dynamic Input Fields */}
-                        {(certType === 'PHOTO' || certType === 'BIOMETRIC' || certType === 'APP_CAPTURE') && (
-                             <div 
-                                className={`h-48 rounded-xl border-2 border-dashed flex flex-col items-center justify-center mb-4 transition-colors cursor-pointer relative overflow-hidden ${
-                                    previewUrl ? 'border-primary-500 bg-primary-50' : 'border-gray-300 hover:bg-gray-100'
-                                }`}
-                                onClick={() => fileInputRef.current?.click()}
-                             >
-                                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
-                                 {previewUrl ? (
-                                     <img src={previewUrl} alt="Preview" className="w-full h-full object-contain p-2" />
-                                 ) : (
-                                     <>
+                        {(certType === 'PHOTO' || certType === 'VIDEO' || certType === 'BIOMETRIC' || certType === 'APP_CAPTURE') && (
+                             <>
+                                {previewUrls.length > 0 ? (
+                                    <div className="mb-4">
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {previewUrls.map((url, index) => (
+                                                <div key={index} className="relative aspect-square rounded-xl overflow-hidden border border-gray-200 group">
+                                                    <img src={url} alt={`preview ${index}`} className="w-full h-full object-cover" />
+                                                    <button 
+                                                        onClick={() => handleRemoveFile(index)}
+                                                        className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1 hover:bg-red-500 transition-colors"
+                                                    >
+                                                        <X className="w-3 h-3" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            {/* Add Button for photos if less than 3 */}
+                                            {certType !== 'VIDEO' && previewUrls.length < 3 && (
+                                                <div 
+                                                    onClick={() => fileInputRef.current?.click()}
+                                                    className="aspect-square rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 hover:border-primary-300 transition-colors"
+                                                >
+                                                    <Plus className="w-6 h-6 text-gray-400" />
+                                                    <span className="text-[10px] text-gray-500 font-bold mt-1">추가</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <p className="text-right text-[10px] text-gray-400 mt-1">
+                                            {certType === 'VIDEO' ? '영상은 1개만 업로드 가능합니다.' : `${previewUrls.length}/3장 업로드됨`}
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div 
+                                        className={`h-48 rounded-xl border-2 border-dashed flex flex-col items-center justify-center mb-4 transition-colors cursor-pointer relative overflow-hidden border-gray-300 hover:bg-gray-100`}
+                                        onClick={() => fileInputRef.current?.click()}
+                                    >
                                         <UploadCloud className="w-8 h-8 mb-2 text-gray-400" />
                                         <span className="text-sm font-medium text-gray-500">
-                                            {certType === 'BIOMETRIC' ? '워치/건강앱 캡처 업로드' : '이미지 업로드'} (클릭)
+                                            {certType === 'BIOMETRIC' ? '워치/건강앱 캡처 업로드' : certType === 'VIDEO' ? '영상 업로드 (최대 1개)' : '이미지 업로드 (최대 3장)'}
                                         </span>
-                                     </>
-                                 )}
-                             </div>
+                                        <span className="text-xs text-gray-400 mt-1">(클릭하여 선택)</span>
+                                    </div>
+                                )}
+                                
+                                <input 
+                                    type="file" 
+                                    ref={fileInputRef} 
+                                    className="hidden" 
+                                    multiple={certType !== 'VIDEO'} // Enable multiple unless video
+                                    accept={certType === 'VIDEO' ? "video/*" : "image/*"} 
+                                    onChange={handleFileChange} 
+                                />
+
+                                {(certType === 'PHOTO' || certType === 'VIDEO') && (
+                                    <div className="text-center mb-4">
+                                        <button
+                                            onClick={handleSwitchToTextVerification}
+                                            className="text-xs text-gray-500 underline hover:text-gray-800"
+                                        >
+                                            인증 사진/영상을 찍지 못했나요? 텍스트로 인증하기
+                                        </button>
+                                    </div>
+                                )}
+                             </>
                         )}
                         
                         {certType === 'EMAIL' && (
@@ -669,20 +998,32 @@ export function PlanDetail() {
                             <input type="text" className="w-full rounded-xl border-gray-300 text-sm" value={certContent} onChange={e => setCertContent(e.target.value)} />
                         </div>
 
-                        <Button fullWidth onClick={handleCertification} disabled={submitting}>
+                        <Button fullWidth onClick={() => handleCertification(false)} disabled={submitting}>
                             {submitting ? '제출 중...' : '인증 제출하기'}
                         </Button>
                     </div>
                 </div>
             )}
             
+            {/* ... (Other Modals: showEvidenceDetail, showAIExamples, etc. kept same) ... */}
             {showEvidenceDetail && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4 animate-fade-in" onClick={() => setShowEvidenceDetail(null)}>
                     <div className="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl relative" onClick={e => e.stopPropagation()}>
                         <button className="absolute top-4 right-4 z-10 p-2 bg-black/50 text-white rounded-full hover:bg-black/70" onClick={() => setShowEvidenceDetail(null)}><X className="w-5 h-5" /></button>
-                        <div className="bg-gray-100 max-h-[60vh] overflow-hidden flex items-center justify-center relative min-h-[200px]">
+                        <div className="bg-gray-100 max-h-[60vh] overflow-y-auto flex flex-col items-center justify-center relative min-h-[200px]">
                             {showEvidenceDetail.type === 'PHOTO' ? (
-                                <img src={showEvidenceDetail.url} alt="evidence" className="w-full h-full object-contain" />
+                                <div className="w-full">
+                                    {/* Display Multiple Images if available, else fallback to url */}
+                                    {(showEvidenceDetail.imageUrls && showEvidenceDetail.imageUrls.length > 0) ? (
+                                        <div className="flex flex-col gap-2 p-2">
+                                            {showEvidenceDetail.imageUrls.map((url, i) => (
+                                                <img key={i} src={url} alt={`evidence ${i}`} className="w-full h-auto object-contain rounded-lg" />
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <img src={showEvidenceDetail.url} alt="evidence" className="w-full h-full object-contain" />
+                                    )}
+                                </div>
                             ) : (
                                 <div className="p-10 text-center text-gray-500">
                                     <div className="text-lg font-bold mb-2">{showEvidenceDetail.type} 인증</div>
@@ -791,6 +1132,15 @@ export function PlanDetail() {
                     </div>
                 </div>
             )}
+
+            <ConfirmDialog 
+                isOpen={confirmConfig.isOpen}
+                title={confirmConfig.title}
+                message={confirmConfig.message}
+                onConfirm={confirmConfig.onConfirm}
+                onCancel={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+                isDangerous={confirmConfig.isDangerous}
+            />
         </div>
     );
 }

@@ -170,7 +170,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // preventing race condition with onAuthStateChanged
         setCurrentUser(newUser);
     } catch (error) {
-        console.error("Email Signup Error:", error);
+        // Rethrow to let component handle it (and display error message)
         throw error;
     }
   };
@@ -179,7 +179,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
         await signInWithEmailAndPassword(auth, email, password);
     } catch (error) {
-        console.error("Email Login Error:", error);
+        // Just rethrow, do not console.error expected validation errors
         throw error;
     }
   };

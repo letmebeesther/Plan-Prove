@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Home, PlusCircle, Users, TrendingUp, Trophy, Grid, User, Settings, X } from 'lucide-react';
+import { Home, PlusCircle, Search, Users, TrendingUp, Trophy, Grid, User, Settings, X } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 interface SidebarProps {
@@ -11,6 +11,7 @@ interface SidebarProps {
 const menuItems = [
   { icon: Home, label: '홈', path: '/' },
   { icon: PlusCircle, label: '새 계획', path: '/new-plan' },
+  { icon: Search, label: '통합 검색', path: '/search' },
   { icon: Users, label: '함께 도전하기', path: '/challenges' },
   { icon: TrendingUp, label: '인기 도전', path: '/trending' },
   { icon: Trophy, label: '명예의 전당', path: '/hall-of-fame' },

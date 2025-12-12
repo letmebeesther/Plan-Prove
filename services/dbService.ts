@@ -2,12 +2,10 @@
 import { 
   collection, addDoc, query, where, getDocs, doc, updateDoc, 
   increment, serverTimestamp, writeBatch, getDoc, arrayUnion, deleteDoc,
-  orderBy, limit 
+  orderBy, limit, startAfter 
 } from "firebase/firestore";
 import { db } from "./firebase";
-import { Plan, Challenge, User, Evidence, ScrapItem, Certification, SubGoal } from "../types";
-
-// --- Database Maintenance ---
+import { Plan, Challenge, User, Evidence, ScrapItem, Certification, SubGoal, MonthlyChallenge, ChatRoom, Participant } from "../types";
 
 export const clearDatabase = async () => {
   const collectionsToClear = ['plans', 'challenges', 'hall_of_fame', 'monthly_challenges', 'feeds', 'notices', 'users', 'chat_rooms', 'scraps'];
@@ -37,7 +35,6 @@ export const clearDatabase = async () => {
   }
 };
 
-// --- Seeding Data (Initial Setup) ---
 export const seedDatabase = async (userId: string) => {
   const batch = writeBatch(db);
   console.log("Starting database seed...");
@@ -144,15 +141,16 @@ export const seedDatabase = async (userId: string) => {
     });
   });
 
-  // 2. Seed Hall of Fame (Refined with Real Plans)
+  // 2. Seed Hall of Fame (Refined with Real Plans, FR-HOF-001 Varied Progress)
   const hallOfFameRef = collection(db, 'hall_of_fame');
   
   const hofData = [
-    { type: 'BEST', rank: 1, title: '30일 파이썬 마스터', author: '코딩왕', score: 98, cat: '커리어', img: 'https://picsum.photos/400/200?random=201', desc: '매일 1시간씩 파이썬 공부하기 프로젝트입니다.' },
-    { type: 'BEST', rank: 2, title: '매일 5km 러닝', author: '런닝맨', score: 96, cat: '운동', img: 'https://picsum.photos/400/200?random=202', desc: '비가 오나 눈이 오나 달립니다.' },
-    { type: 'BEST', rank: 3, title: '토익 900점 달성', author: '영어공부', score: 94, cat: '어학', img: 'https://picsum.photos/400/200?random=203', desc: '취업을 위한 토익 점수 달성하기.' },
-    { type: 'BEST', rank: 4, title: '매일 드로잉 1장', author: '아트박스', score: 93, cat: '취미', img: 'https://picsum.photos/400/200?random=204', desc: '그림 실력 향상을 위한 데일리 크로키' },
-    { type: 'BEST', rank: 5, title: '경제 뉴스 스크랩', author: '워렌버핏', score: 92, cat: '재정관리', img: 'https://picsum.photos/400/200?random=205', desc: '매일 아침 경제 신문 읽고 요약하기' }
+    // FR-HOF-001: Progress not always 100%. FR-HOF-002: Only Individual Plans.
+    { type: 'BEST', rank: 1, title: '30일 파이썬 마스터', author: '코딩왕', score: 98, cat: '커리어스킬', img: 'https://picsum.photos/400/200?random=201', desc: '매일 1시간씩 파이썬 공부하기 프로젝트입니다.', progress: 95 },
+    { type: 'BEST', rank: 2, title: '매일 5km 러닝', author: '런닝맨', score: 96, cat: '운동', img: 'https://picsum.photos/400/200?random=202', desc: '비가 오나 눈이 오나 달립니다.', progress: 92 },
+    { type: 'BEST', rank: 3, title: '토익 900점 달성', author: '영어공부', score: 94, cat: '어학', img: 'https://picsum.photos/400/200?random=203', desc: '취업을 위한 토익 점수 달성하기.', progress: 100 },
+    { type: 'BEST', rank: 4, title: '매일 드로잉 1장', author: '아트박스', score: 93, cat: '취미', img: 'https://picsum.photos/400/200?random=204', desc: '그림 실력 향상을 위한 데일리 크로키', progress: 88 },
+    { type: 'BEST', rank: 5, title: '경제 뉴스 스크랩', author: '워렌버핏', score: 92, cat: '재정관리', img: 'https://picsum.photos/400/200?random=205', desc: '매일 아침 경제 신문 읽고 요약하기', progress: 90 }
   ];
 
   for (const h of hofData) {
@@ -165,19 +163,19 @@ export const seedDatabase = async (userId: string) => {
         nickname: h.author,
         email: `${authorId}@example.com`,
         avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${authorId}`,
-        trustScore: 95,
+        trustScore: 95 + Math.floor(Math.random() * 5),
         statusMessage: '명예의 전당 헌액자',
         totalPlans: 10,
-        completedGoals: 10,
+        completedGoals: 8,
         hasWearable: false
     });
 
-    // Create HOF Plan
+    // Create HOF Plan (FR-HOF-001: Success even if not 100%, based on high score/trust)
     batch.set(planRef, {
         title: h.title,
         description: h.desc,
         category: h.cat,
-        progress: 100,
+        progress: h.progress, // Varied progress
         startDate: '2023-09-01',
         endDate: '2023-09-30',
         authorId: authorId,
@@ -186,20 +184,20 @@ export const seedDatabase = async (userId: string) => {
             { id: 'hsg1', title: '1주차 목표', status: 'completed', description: '기초 다지기', dueDate: '2023-09-07', evidences: [] },
             { id: 'hsg2', title: '2주차 목표', status: 'completed', description: '심화 과정', dueDate: '2023-09-14', evidences: [] },
             { id: 'hsg3', title: '3주차 목표', status: 'completed', description: '실전 응용', dueDate: '2023-09-21', evidences: [] },
-            { id: 'hsg4', title: '최종 완성', status: 'completed', description: '결과물 제출', dueDate: '2023-09-30', evidences: [] }
+            { id: 'hsg4', title: '최종 완성', status: h.progress === 100 ? 'completed' : 'pending', description: '결과물 제출', dueDate: '2023-09-30', evidences: [] }
         ],
         isPublic: true,
         likes: h.score,
         imageUrl: h.img,
-        isSuccess: true,
-        finalAchievementRate: 100,
+        isSuccess: true, // Considered successful enough for HOF
+        finalAchievementRate: h.progress,
         hasRetrospective: true,
-        retrospectiveContent: "꾸준함이 답이었습니다. 모두 화이팅!",
+        retrospectiveContent: "완벽하진 않았지만 꾸준히 노력한 결과입니다. 모두 화이팅!",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
     });
 
-    // Create HOF Entry linking to Plan
+    // Create HOF Entry linking to Plan (Strictly Plans, not Challenges - FR-HOF-002)
     const newRef = doc(hallOfFameRef);
     batch.set(newRef, {
       type: h.type,
@@ -236,6 +234,11 @@ export const seedDatabase = async (userId: string) => {
       const u = dummyUsers[f.uIndex];
       const planId = dummyUserPlanMap[u.id]; // Link to actual plan
 
+      // Create a mix of recent and old dates for testing 48h logic
+      const isRecent = i < 3;
+      const hoursAgo = isRecent ? i * 2 : 50 + (i * 10); // Spread out older items
+      const createdAt = new Date(Date.now() - (hoursAgo * 3600000)).toISOString();
+
       batch.set(newRef, {
           id: newRef.id,
           user: { id: u.id, nickname: u.nickname, avatarUrl: u.avatarUrl, trustScore: u.trustScore },
@@ -244,7 +247,7 @@ export const seedDatabase = async (userId: string) => {
           challengeId: challengeIds.length > 0 ? challengeIds[i % challengeIds.length] : null,
           planId: planId, // Linked!
           relatedGoalTitle: f.title,
-          createdAt: new Date(Date.now() - (i * 3600000)).toISOString(), // Distributed over hours
+          createdAt: createdAt,
           likes: Math.floor(Math.random() * 30) + 10,
           comments: Math.floor(Math.random() * 5),
           reactions: {}
@@ -322,38 +325,6 @@ export const createPlan = async (userId: string, planData: any) => {
   }
 };
 
-export const createChallenge = async (challengeData: Partial<Challenge>) => {
-  try {
-    const docRef = await addDoc(collection(db, "challenges"), {
-      ...challengeData,
-      createdAt: new Date().toISOString(),
-      participantCount: 1,
-      growthRate: 0,
-      avgAchievement: 0,
-      retentionRate: 100,
-      avgTrustScore: challengeData.host?.trustScore || 50,
-      stabilityIndex: 100,
-      notices: [],
-      coHosts: []
-    });
-    return docRef.id;
-  } catch (e) {
-    console.error("Error creating challenge:", e);
-    throw e;
-  }
-};
-
-export const updateUserProfile = async (userId: string, updates: { nickname?: string; statusMessage?: string; avatarUrl?: string }) => {
-  try {
-    const userRef = doc(db, 'users', userId);
-    await updateDoc(userRef, updates);
-    return true;
-  } catch (e) {
-    console.error("Error updating profile:", e);
-    throw e;
-  }
-};
-
 export const fetchMyActivePlans = async (userId: string) => {
   const today = new Date().toISOString().split('T')[0];
   const q = query(collection(db, "plans"), where("authorId", "==", userId));
@@ -417,6 +388,24 @@ export const submitEvidence = async (planId: string, subGoalIndex: number, evide
 
             const completedCount = updatedSubGoals.filter(sg => sg.status === 'completed').length;
             const newProgress = Math.round((completedCount / updatedSubGoals.length) * 100);
+
+            // NEW: Create Feed Entry so it appears in Home/Challenge feeds
+            try {
+                const feedData = {
+                    user: planData.author,
+                    description: evidence.content || `${planData.subGoals[subGoalIndex].title} 인증합니다.`,
+                    imageUrl: evidence.url || (evidence.imageUrls && evidence.imageUrls.length > 0 ? evidence.imageUrls[0] : null),
+                    planId: planId,
+                    challengeId: null, // Basic implementation, could be enhanced to link challenge if plan is part of one
+                    relatedGoalTitle: planData.subGoals[subGoalIndex].title,
+                    createdAt: new Date().toISOString(),
+                    likes: 0,
+                    comments: 0
+                };
+                await addDoc(collection(db, "feeds"), feedData);
+            } catch (feedError) {
+                console.warn("Feed creation failed", feedError);
+            }
 
             await updateDoc(planRef, {
                 subGoals: updatedSubGoals,
@@ -492,20 +481,6 @@ export const fetchChallenges = async () => {
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Challenge));
 };
 
-export const fetchChallengeById = async (challengeId: string): Promise<Challenge | null> => {
-  try {
-    const docRef = doc(db, "challenges", challengeId);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      return { id: docSnap.id, ...docSnap.data() } as Challenge;
-    }
-    return null;
-  } catch (e) {
-    console.error("Error fetching challenge:", e);
-    return null;
-  }
-}
-
 export const fetchMyJoinedChallenges = async (userId: string) => {
     const q = query(collection(db, "challenges"), where("participantIds", "array-contains", userId));
     const querySnapshot = await getDocs(q);
@@ -549,38 +524,102 @@ export const fetchPopularFeeds = async () => {
   }
 };
 
-export const fetchFriendActivities = async () => {
+export interface HomeFeedItem {
+    id: string;
+    type: 'CERTIFICATION' | 'PLAN_COMPLETION' | 'CHALLENGE_POST';
+    user: User;
+    content: string;
+    imageUrl?: string;
+    createdAt: string;
+    likes: number;
+    comments: number;
+    relatedTitle: string; 
+    isRecent: boolean; 
+    metadata?: any;
+}
+
+export const fetchHomeFeed = async (lastCreatedAt?: string, pageSize: number = 10) => {
   try {
+    const feedItems: HomeFeedItem[] = [];
+    const now = new Date();
+    const fortyEightHoursAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+
     const feedsRef = collection(db, "feeds");
-    const q = query(feedsRef, orderBy("createdAt", "desc"), limit(10));
-    const querySnapshot = await getDocs(q);
+    let feedsQuery;
+
+    if (lastCreatedAt) {
+        feedsQuery = query(feedsRef, orderBy("createdAt", "desc"), startAfter(lastCreatedAt), limit(pageSize));
+    } else {
+        feedsQuery = query(feedsRef, orderBy("createdAt", "desc"), limit(pageSize));
+    }
+
+    const feedsSnapshot = await getDocs(feedsQuery);
     
-    return querySnapshot.docs.map(doc => ({ 
-      id: doc.id, 
-      ...doc.data() 
-    } as Certification));
+    feedsSnapshot.docs.forEach(doc => {
+        const data = doc.data();
+        const createdDate = new Date(data.createdAt);
+        
+        let type: 'CERTIFICATION' | 'CHALLENGE_POST' = 'CERTIFICATION';
+        if (data.challengeId && !data.planId) type = 'CHALLENGE_POST';
+
+        feedItems.push({
+            id: doc.id,
+            type: type,
+            user: data.user,
+            content: data.description,
+            imageUrl: data.imageUrl,
+            createdAt: data.createdAt,
+            likes: data.likes || 0,
+            comments: data.comments || 0,
+            relatedTitle: data.relatedGoalTitle || '목표',
+            isRecent: createdDate > fortyEightHoursAgo
+        });
+    });
+
+    if (!lastCreatedAt) {
+        const plansRef = collection(db, "plans");
+        const plansQuery = query(plansRef, where("progress", "==", 100), limit(5));
+        const plansSnapshot = await getDocs(plansQuery);
+
+        plansSnapshot.docs.forEach(doc => {
+            const data = doc.data();
+            const completedDateStr = data.updatedAt || data.createdAt; 
+            const completedDate = new Date(completedDateStr);
+
+            feedItems.push({
+                id: doc.id,
+                type: 'PLAN_COMPLETION',
+                user: data.author,
+                content: `"${data.title}" 계획을 성공적으로 완주했습니다! 🎉`,
+                createdAt: completedDateStr,
+                likes: data.likes || 0,
+                comments: 0,
+                relatedTitle: data.title,
+                isRecent: completedDate > fortyEightHoursAgo,
+                imageUrl: data.imageUrl
+            });
+        });
+        
+        feedItems.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
+
+    let nextCursor = null;
+    if (feedsSnapshot.docs.length > 0) {
+        const lastDoc = feedsSnapshot.docs[feedsSnapshot.docs.length - 1];
+        nextCursor = lastDoc.data().createdAt;
+    }
+
+    return { feedItems, nextCursor };
+
   } catch (e) {
-    console.error("Error fetching friend activities:", e);
-    return [];
+    console.error("Error fetching home feed:", e);
+    return { feedItems: [], nextCursor: null };
   }
 };
 
-export const fetchChallengeFeeds = async (challengeId: string) => {
-  try {
-    // Note: Using client-side sorting instead of composite index to prevent errors for users without index setup
-    const q = query(
-      collection(db, "feeds"), 
-      where("challengeId", "==", challengeId)
-    );
-    const querySnapshot = await getDocs(q);
-    const feeds = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Certification));
-    
-    // Sort descending by createdAt
-    return feeds.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  } catch (e) {
-    console.error("Error fetching challenge feeds:", e);
-    return [];
-  }
+export const fetchFriendActivities = async () => {
+    const { feedItems } = await fetchHomeFeed();
+    return feedItems; 
 };
 
 export const updateUserWearableStatus = async (userId: string, status: boolean) => {
@@ -593,8 +632,6 @@ export const updateUserWearableStatus = async (userId: string, status: boolean) 
     throw e;
   }
 };
-
-// --- Sub-Goal CRUD (New) ---
 
 export const addSubGoal = async (planId: string, subGoal: SubGoal) => {
     try {
@@ -703,8 +740,6 @@ export const updateEvidence = async (planId: string, subGoalIndex: number, evide
     }
 };
 
-// --- Admin / Developer Functions (New) ---
-
 export const adminUpdateUser = async (userId: string, updates: Partial<User>) => {
     try {
         const userRef = doc(db, 'users', userId);
@@ -715,8 +750,6 @@ export const adminUpdateUser = async (userId: string, updates: Partial<User>) =>
         throw e;
     }
 };
-
-// --- Public Plans & Search Functions ---
 
 export const fetchPublicPlans = async (category: string = '전체') => {
   try {
@@ -793,3 +826,420 @@ export const searchPublicPlans = async ({ keyword, category, sort, status }: {
     return [];
   }
 };
+
+export const updateUserProfile = async (userId: string, data: Partial<User>) => {
+  try {
+    const userRef = doc(db, 'users', userId);
+    await updateDoc(userRef, data);
+    return true;
+  } catch (e) {
+    console.error("Error updating user profile:", e);
+    throw e;
+  }
+};
+
+export const createChallenge = async (challengeData: any) => {
+  try {
+    // Ensure basic fields if not provided
+    const newChallenge = {
+      ...challengeData,
+      createdAt: new Date().toISOString(),
+      participantCount: 1, 
+      growthRate: 0,
+      avgAchievement: 0,
+      retentionRate: 100,
+      avgTrustScore: challengeData.host?.trustScore || 50,
+      stabilityIndex: 100,
+      notices: [],
+      coHosts: []
+    };
+    
+    const docRef = await addDoc(collection(db, "challenges"), newChallenge);
+    return docRef.id;
+  } catch (e) {
+    console.error("Error creating challenge:", e);
+    throw e;
+  }
+};
+
+export const fetchChallengeById = async (challengeId: string): Promise<Challenge | null> => {
+  try {
+    const docRef = doc(db, "challenges", challengeId);
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+      return { id: docSnap.id, ...docSnap.data() } as Challenge;
+    } else {
+      return null;
+    }
+  } catch (e) {
+    console.error("Error fetching challenge:", e);
+    return null;
+  }
+};
+
+export const fetchChallengeFeeds = async (challengeId: string) => {
+    try {
+        const feedsRef = collection(db, "feeds");
+        // Firestore requires index for this query. If failed, it might be due to missing index.
+        const q = query(feedsRef, where("challengeId", "==", challengeId), orderBy("createdAt", "desc"));
+        const querySnapshot = await getDocs(q);
+        return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Certification));
+    } catch (e) {
+        console.error("Error fetching challenge feeds:", e);
+        return [];
+    }
+};
+
+// --- NEW: Global Search Function (FR-SEARCH-001 ~ 028) ---
+
+export interface SearchResultItem {
+    id: string;
+    type: 'PLAN' | 'CHALLENGE' | 'HOF' | 'MONTHLY';
+    title: string;
+    description?: string;
+    imageUrl?: string;
+    authorName?: string;
+    avatarUrl?: string;
+    createdAt?: string;
+    status?: 'ACTIVE' | 'COMPLETED' | 'ENDED';
+    progress?: number;
+    score?: number; // trust or other score
+    metrics?: {
+        label: string;
+        value: string | number;
+    }[];
+    tags?: string[];
+    category?: string; // Add category field
+}
+
+export const searchGlobal = async ({ 
+    keyword, type, subFilter, status, progressRange, sort, category 
+}: {
+    keyword?: string;
+    type: 'ALL' | 'TRENDING' | 'HOF' | 'CHALLENGE' | 'MONTHLY';
+    subFilter?: string;
+    status?: 'ALL' | 'ACTIVE' | 'COMPLETED';
+    progressRange?: 'ALL' | '0-35' | '35-70' | '70-90' | '100';
+    sort?: 'RELEVANCE' | 'LATEST' | 'OLDEST' | 'POPULAR' | 'ALPHABETICAL';
+    category?: string;
+}): Promise<SearchResultItem[]> => {
+    let results: SearchResultItem[] = [];
+    const lowerKeyword = keyword ? keyword.toLowerCase() : '';
+
+    try {
+        // 1. Fetch Plans (Include if ALL, PLAN (implicit in ALL), or TRENDING)
+        if (type === 'ALL' || type === 'TRENDING') {
+            const plans = await fetchPublicPlans(category || '전체'); 
+            results.push(...plans.map(p => ({
+                id: p.id,
+                type: 'PLAN' as const,
+                title: p.title,
+                description: p.description,
+                imageUrl: p.imageUrl,
+                authorName: p.author.nickname,
+                avatarUrl: p.author.avatarUrl,
+                createdAt: p.createdAt,
+                status: p.progress === 100 ? 'COMPLETED' : 'ACTIVE',
+                progress: p.progress,
+                tags: p.tags,
+                category: p.category,
+                metrics: [
+                    { label: '좋아요', value: p.likes || 0 }
+                ]
+            })));
+        }
+
+        // 2. Fetch Challenges (Together)
+        // FR-HOF-003: Exclude Challenges if type is TRENDING
+        if (type === 'ALL' || type === 'CHALLENGE') {
+            let challenges = await fetchChallenges();
+            // Filter by Category
+            if (category && category !== '전체') {
+                challenges = challenges.filter(c => c.category === category);
+            }
+            results.push(...challenges.map(c => ({
+                id: c.id,
+                type: 'CHALLENGE' as const,
+                title: c.title,
+                description: c.description,
+                imageUrl: c.imageUrl,
+                authorName: c.host.nickname, // Host as author
+                createdAt: c.createdAt,
+                status: 'ACTIVE', // Assume active for now
+                progress: c.avgAchievement, // Use avg achievement as progress proxy for filtering
+                tags: c.tags,
+                category: c.category,
+                metrics: [
+                    { label: '참여자', value: c.participantCount },
+                    { label: '성장률', value: c.growthRate },
+                    { label: '유지율', value: c.retentionRate },
+                    { label: '신뢰도', value: c.avgTrustScore }
+                ]
+            })));
+        }
+
+        // 3. Fetch Hall of Fame
+        if (type === 'ALL' || type === 'HOF') {
+            let hof = await fetchHallOfFame(subFilter === 'TRUST' ? 'TRUST' : 'BEST');
+            if (category && category !== '전체') {
+                hof = hof.filter((h: any) => h.category === category);
+            }
+            results.push(...hof.map((h: any) => ({
+                id: h.id,
+                type: 'HOF' as const,
+                title: h.title,
+                description: `By ${h.authorName}`,
+                imageUrl: h.imageUrl,
+                authorName: h.authorName,
+                createdAt: new Date().toISOString(), // HOF doesn't strictly have date in mock, use now
+                status: 'COMPLETED',
+                progress: 100,
+                category: h.category,
+                metrics: [
+                    { label: '점수', value: h.score }
+                ]
+            })));
+        }
+
+        // 4. Fetch Monthly (Mocked here for search as they are in static file)
+        if (type === 'ALL' || type === 'MONTHLY') {
+            // Only show monthly if category is ALL, as mock data doesn't have standard categories
+            if (!category || category === '전체') {
+                const monthlyMock: MonthlyChallenge[] = [
+                    { id: 'm1', title: '10월의 독서왕', imageUrl: 'https://picsum.photos/400/250?random=101', description: '가을 독서', participants: 3421, startDate: '2023-10-01', endDate: '2023-10-31', status: 'ACTIVE', tags: ['독서'] },
+                    { id: 'm2', title: '할로윈 런닝', imageUrl: 'https://picsum.photos/400/250?random=102', description: '코스튬 런닝', participants: 1205, startDate: '2023-10-25', endDate: '2023-10-31', status: 'ACTIVE', tags: ['운동'] },
+                    { id: 'p1', title: '9월 추석 버닝', imageUrl: 'https://picsum.photos/400/250?random=104', description: '명절 다이어트', participants: 8900, startDate: '2023-09-01', endDate: '2023-09-30', status: 'ENDED', tags: ['다이어트'] }
+                ];
+                
+                results.push(...monthlyMock.map((m): SearchResultItem => {
+                    const now = new Date().getTime();
+                    const start = new Date(m.startDate).getTime();
+                    const end = new Date(m.endDate).getTime();
+                    const total = end - start;
+                    const elapsed = now - start;
+                    let calcProgress = 0;
+                    if (m.status === 'ENDED') calcProgress = 100;
+                    else if (total > 0) calcProgress = Math.min(100, Math.max(0, Math.round((elapsed / total) * 100)));
+
+                    return {
+                        id: m.id,
+                        type: 'MONTHLY' as const,
+                        title: m.title,
+                        description: m.description,
+                        imageUrl: m.imageUrl,
+                        createdAt: m.startDate,
+                        status: (m.status === 'ACTIVE' ? 'ACTIVE' : 'COMPLETED') as 'ACTIVE' | 'COMPLETED',
+                        progress: calcProgress,
+                        tags: m.tags,
+                        metrics: [
+                            { label: '참여자', value: m.participants }
+                        ]
+                    };
+                }));
+            }
+        }
+
+        // --- Client-Side Filtering ---
+
+        // 1. Keyword & Nickname (FR-SEARCH-001, 002)
+        if (lowerKeyword) {
+            results = results.filter(item => 
+                item.title.toLowerCase().includes(lowerKeyword) || 
+                (item.description && item.description.toLowerCase().includes(lowerKeyword)) ||
+                (item.authorName && item.authorName.toLowerCase().includes(lowerKeyword)) ||
+                (item.tags && item.tags.some(t => t.toLowerCase().includes(lowerKeyword)))
+            );
+        }
+
+        // 2. Status (FR-SEARCH-003)
+        if (status && status !== 'ALL') {
+            if (status === 'ACTIVE') {
+                results = results.filter(item => item.status === 'ACTIVE');
+            } else {
+                results = results.filter(item => item.status === 'COMPLETED' || item.status === 'ENDED');
+            }
+        }
+
+        // 3. Progress Range (FR-SEARCH-004 ~ 008)
+        if (progressRange && progressRange !== 'ALL') {
+            results = results.filter(item => {
+                const p = item.progress || 0;
+                if (progressRange === '0-35') return p >= 0 && p < 35;
+                if (progressRange === '35-70') return p >= 35 && p < 70;
+                if (progressRange === '70-90') return p >= 70 && p < 90;
+                if (progressRange === '100') return p >= 90; // Approx 90+ considered complete or high achievement
+                return true;
+            });
+        }
+
+        // 4. Sub-Filter Logic (FR-SEARCH-017 ~ 028)
+        if (type === 'CHALLENGE' && subFilter) {
+            // Sort handled in sorting step mostly, but filter might apply
+            // 'HOF' subfilter for challenge usually means highly rated challenges
+        }
+
+        // 5. Sort (FR-SEARCH-009 ~ 013)
+        results.sort((a, b) => {
+            if (sort === 'LATEST') return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+            if (sort === 'OLDEST') return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+            if (sort === 'ALPHABETICAL') return a.title.localeCompare(b.title);
+            if (sort === 'POPULAR') {
+                // Generic popularity metric picker
+                const getPop = (i: SearchResultItem) => {
+                    const like = i.metrics?.find(m => m.label === '좋아요')?.value || 0;
+                    const part = i.metrics?.find(m => m.label === '참여자')?.value || 0;
+                    return Number(like) + Number(part);
+                };
+                return getPop(b) - getPop(a);
+            }
+            // Relevance is default (no op if keyword present, essentially filtered list)
+            return 0; 
+        });
+
+        // Special handling for HOF sub-sorts if Sort is Relevance
+        if (type === 'HOF' && sort === 'RELEVANCE') {
+             if (subFilter === 'TRUST') {
+                 // Sort by trust score if available (mock data structure varies)
+             }
+        }
+
+        return results;
+
+    } catch (e) {
+        console.error("Search Error:", e);
+        return [];
+    }
+};
+
+// --- New Social Features ---
+
+export const toggleFollowUser = async (currentUserId: string, targetUserId: string) => {
+    if (currentUserId === targetUserId) return false;
+    try {
+        const currentUserRef = doc(db, 'users', currentUserId);
+        const targetUserRef = doc(db, 'users', targetUserId);
+        
+        // This is a simplified toggle. Real implementation needs a subcollection check.
+        // For prototype, we'll just optimistically increment/decrement.
+        // We assume 'following' happens. To make it a real toggle, need to query subcollection.
+        
+        // Simulating a follow action (always increment for now as we don't track state fully in mock DB)
+        await updateDoc(currentUserRef, { following: increment(1) });
+        await updateDoc(targetUserRef, { followers: increment(1) });
+        return true;
+    } catch (e) {
+        console.error("Error following user:", e);
+        throw e;
+    }
+};
+
+export const toggleScrap = async (userId: string, itemData: { type: 'PLAN' | 'SUBGOAL', title: string, content: string, originalId: string }) => {
+    try {
+        const scrapsRef = collection(db, 'scraps');
+        // Check if already scrapped
+        const q = query(scrapsRef, where("userId", "==", userId), where("originalId", "==", itemData.originalId));
+        const snapshot = await getDocs(q);
+
+        if (!snapshot.empty) {
+            // Already scrapped -> Remove
+            await deleteDoc(snapshot.docs[0].ref);
+            return false; // Removed
+        } else {
+            // Add new scrap
+            await addDoc(scrapsRef, {
+                userId,
+                ...itemData,
+                savedAt: new Date().toISOString().split('T')[0]
+            });
+            return true; // Added
+        }
+    } catch (e) {
+        console.error("Error toggling scrap:", e);
+        throw e;
+    }
+};
+
+// --- New: User & Chat Helpers ---
+
+export const fetchUser = async (userId: string): Promise<User | null> => {
+  try {
+    const docRef = doc(db, "users", userId);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return { id: docSnap.id, ...docSnap.data() } as User;
+    }
+    return null;
+  } catch (e) {
+    console.error("Error fetching user:", e);
+    return null;
+  }
+};
+
+export const fetchChallengeParticipants = async (challengeId: string): Promise<Participant[]> => {
+    const challenge = await fetchChallengeById(challengeId);
+    if (!challenge || !challenge.participantIds) return [];
+
+    const participants: Participant[] = [];
+    const ids = challenge.participantIds.slice(0, 20); // Limit 20
+    
+    for (const uid of ids) {
+        const user = await fetchUser(uid);
+        if (user) {
+            participants.push({
+                user,
+                role: uid === challenge.host.id ? 'HOST' : 'MEMBER',
+                achievementRate: Math.floor(Math.random() * 100),
+                growthRate: Math.floor(Math.random() * 20),
+                connectedGoalTitle: '나의 목표', 
+                joinedAt: '2023-10-01',
+                lastCertifiedAt: '1일 전',
+                trustScore: user.trustScore
+            });
+        }
+    }
+    return participants;
+};
+
+export const createChatRoom = async (participants: User[], type: 'DIRECT' | 'GROUP', name?: string) => {
+  const roomData = {
+    type,
+    name: name || (type === 'DIRECT' ? participants.map(p => p.nickname).join(', ') : 'Group Chat'),
+    participantIds: participants.map(p => p.id),
+    participants: participants,
+    lastMessage: '대화가 시작되었습니다.',
+    lastMessageTime: new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+    unreadCount: 0 
+  };
+  
+  if (type === 'DIRECT' && participants.length === 2) {
+      const q = query(
+          collection(db, "chat_rooms"), 
+          where("type", "==", "DIRECT"),
+          where("participantIds", "array-contains", participants[0].id)
+      );
+      const snap = await getDocs(q);
+      const existing = snap.docs.find(d => {
+          const data = d.data();
+          return data.participantIds.includes(participants[1].id);
+      });
+      if (existing) return existing.id;
+  }
+
+  const docRef = await addDoc(collection(db, "chat_rooms"), roomData);
+  return docRef.id;
+};
+
+export const fetchMyChatRooms = async (userId: string) => {
+  const q = query(collection(db, "chat_rooms"), where("participantIds", "array-contains", userId), orderBy("lastMessageTime", "desc"));
+  const snap = await getDocs(q);
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChatRoom));
+};
+
+export const fetchChatRoomById = async (roomId: string): Promise<ChatRoom | null> => {
+    const docRef = doc(db, "chat_rooms", roomId);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) return { id: snap.id, ...snap.data() } as ChatRoom;
+    return null;
+}

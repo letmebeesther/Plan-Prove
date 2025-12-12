@@ -1,10 +1,9 @@
 
 import React, { useState } from 'react';
-import { Flame, Filter, Clock, Eye, Heart, MessageCircle, Bookmark, Shield, TrendingUp, Users, Activity, Zap, MessageSquare, ArrowRight } from 'lucide-react';
+import { Flame, Clock, Eye, Heart, MessageCircle, Bookmark, Shield, TrendingUp } from 'lucide-react';
 import { Avatar } from '../components/Avatar';
-import { Button } from '../components/common/Button';
 
-type TabType = 'BASIC' | 'CATEGORY' | 'CHALLENGE';
+type TabType = 'BASIC' | 'CATEGORY';
 
 // Mock Data for Basic Trending (FR-166 ~ FR-174)
 const basicTrendingPosts = [
@@ -83,52 +82,6 @@ const categoryTrendingPosts = [
   }
 ];
 
-// Mock Data for Trending Challenges (FR-183 ~ FR-192)
-const trendingChallenges = [
-  {
-    id: 1,
-    title: '🔥 빡공단 12기: 매일 3시간 공부',
-    statusMsg: '지금 가장 뜨거운 스터디 그룹!',
-    image: 'https://picsum.photos/400/200?random=30',
-    participants: 3420,
-    liveHotScore: 9850,
-    verifyFreq: '매우 높음',
-    newInflow: '+15%',
-    chatActivity: 95,
-    reactions: 12050,
-    growthRate: 24,
-    tags: ['공부루틴', 'LIVE']
-  },
-  {
-    id: 2,
-    title: '🏃‍♂️ 매일 10km 달리기 인증',
-    statusMsg: '함께 달리면 멀리 갈 수 있습니다.',
-    image: 'https://picsum.photos/400/200?random=31',
-    participants: 1200,
-    liveHotScore: 8500,
-    verifyFreq: '높음',
-    newInflow: '+8%',
-    chatActivity: 82,
-    reactions: 5600,
-    growthRate: 12,
-    tags: ['운동', 'HOT']
-  },
-  {
-    id: 3,
-    title: '🥗 설탕 없는 일주일',
-    statusMsg: '건강한 식습관 만들기 프로젝트',
-    image: 'https://picsum.photos/400/200?random=32',
-    participants: 5600,
-    liveHotScore: 7200,
-    verifyFreq: '보통',
-    newInflow: '+25%',
-    chatActivity: 70,
-    reactions: 3400,
-    growthRate: 18,
-    tags: ['건강관리', 'NEW']
-  }
-];
-
 const categories = [
   '전체', '운동', '건강관리', '어학', '자격증', '공부루틴', 
   '커리어스킬', '생활루틴', '재정관리', '취미', '독서'
@@ -153,7 +106,6 @@ export function Trending() {
             {[
                 { id: 'BASIC', label: '인기글' },
                 { id: 'CATEGORY', label: '카테고리별' },
-                { id: 'CHALLENGE', label: '인기 도전' }
             ].map(tab => (
                 <button
                     key={tab.id}
@@ -281,80 +233,6 @@ export function Trending() {
                                     <span className="text-gray-400">카테고리 적합도</span>
                                     <span className="font-bold text-green-600">{post.categoryFitScore}점</span>
                                 </div>
-                            </div>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
-      )}
-
-      {/* 3. Trending Challenges (FR-183 ~ FR-192) */}
-      {activeTab === 'CHALLENGE' && (
-        <div className="animate-fade-in space-y-6">
-            <div className="flex items-center justify-between bg-orange-50 p-3 rounded-lg border border-orange-100 text-sm text-orange-800">
-                <span className="flex items-center gap-1.5 font-bold">
-                    <Zap className="w-4 h-4 text-orange-600 fill-orange-600" /> 실시간 LiveHotScore 랭킹
-                </span>
-                <span className="text-xs bg-white px-2 py-0.5 rounded border border-orange-200">15분마다 갱신</span>
-            </div>
-
-            <div className="grid gap-4">
-                {trendingChallenges.map((challenge, idx) => (
-                    <div key={challenge.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6 hover:border-orange-200 transition-all flex flex-col md:flex-row gap-6">
-                         {/* Image & Rank */}
-                        <div className="w-full md:w-48 h-32 relative rounded-xl overflow-hidden flex-shrink-0">
-                            <img src={challenge.image} alt={challenge.title} className="w-full h-full object-cover" />
-                            <div className="absolute top-2 left-2 w-8 h-8 bg-black text-white rounded-lg flex items-center justify-center font-bold shadow-lg border border-white/20">
-                                {idx + 1}
-                            </div>
-                            {challenge.tags.map((tag, i) => (
-                                <span key={i} className="absolute bottom-2 left-2 bg-white/90 backdrop-blur text-black text-[10px] font-bold px-1.5 py-0.5 rounded">
-                                    {tag}
-                                </span>
-                            ))}
-                        </div>
-
-                        {/* Info */}
-                        <div className="flex-1 min-w-0">
-                            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 mb-2">
-                                <div>
-                                    <h3 className="text-lg font-bold text-gray-900 truncate">{challenge.title}</h3>
-                                    <p className="text-sm text-gray-500">{challenge.statusMsg}</p>
-                                </div>
-                                <div className="flex items-center gap-1 text-orange-600 font-bold bg-orange-50 px-3 py-1.5 rounded-xl border border-orange-100 shadow-sm whitespace-nowrap">
-                                    <Flame className="w-4 h-4 fill-current" />
-                                    {challenge.liveHotScore.toLocaleString()}
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4">
-                                <div className="bg-gray-50 rounded-lg p-2 text-center">
-                                    <div className="text-[10px] text-gray-400">참여자</div>
-                                    <div className="font-bold text-gray-800 text-sm">{challenge.participants.toLocaleString()}</div>
-                                </div>
-                                <div className="bg-gray-50 rounded-lg p-2 text-center">
-                                    <div className="text-[10px] text-gray-400">인증 빈도(2h)</div>
-                                    <div className="font-bold text-blue-600 text-sm">{challenge.verifyFreq}</div>
-                                </div>
-                                <div className="bg-gray-50 rounded-lg p-2 text-center">
-                                    <div className="text-[10px] text-gray-400">신규 유입</div>
-                                    <div className="font-bold text-green-600 text-sm">{challenge.newInflow}</div>
-                                </div>
-                                <div className="bg-gray-50 rounded-lg p-2 text-center">
-                                    <div className="text-[10px] text-gray-400">채팅 활성도</div>
-                                    <div className="font-bold text-gray-800 text-sm">{challenge.chatActivity}</div>
-                                </div>
-                            </div>
-
-                            <div className="flex items-center justify-between gap-4">
-                                <div className="flex items-center gap-3 text-xs text-gray-400">
-                                    <span className="flex items-center gap-1"><Heart className="w-3 h-3" /> {challenge.reactions.toLocaleString()}</span>
-                                    <span className="flex items-center gap-1"><TrendingUp className="w-3 h-3" /> 성장률 +{challenge.growthRate}%</span>
-                                </div>
-                                <Button size="sm" className="bg-gray-900 hover:bg-black text-white px-6">
-                                    참여하기
-                                </Button>
                             </div>
                         </div>
                     </div>

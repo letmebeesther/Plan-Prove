@@ -11,6 +11,7 @@ import { Button } from '../components/common/Button';
 import { Input } from '../components/common/Input';
 import { useNavigate } from 'react-router-dom';
 import { SubGoal, EvidenceOption } from '../types';
+import { ConfirmDialog } from '../components/common/ConfirmDialog';
 
 const categories = ['건강관리', '어학', '자격증', '공부루틴', '커리어스킬', '생활루틴', '재정관리', '취미', '독서', '운동'];
 
@@ -23,6 +24,15 @@ export function NewPlan() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   
+  // Confirmation Modal State
+  const [confirmConfig, setConfirmConfig] = useState<{
+      isOpen: boolean;
+      title: string;
+      message: string;
+      onConfirm: () => void;
+      isDangerous?: boolean;
+  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
+
   // AI Inputs
   const [levelInput, setLevelInput] = useState('초급');
   const [styleInput, setStyleInput] = useState('꾸준하게');
@@ -162,9 +172,16 @@ export function NewPlan() {
   };
 
   const handleRemoveSubGoal = (index: number) => {
-      if (window.confirm('이 중간 목표를 삭제하시겠습니까? (FR-058)')) {
-          setSubGoals(subGoals.filter((_, i) => i !== index));
-      }
+      setConfirmConfig({
+          isOpen: true,
+          title: '목표 삭제',
+          message: '이 중간 목표를 삭제하시겠습니까?',
+          isDangerous: true,
+          onConfirm: () => {
+              setSubGoals(prev => prev.filter((_, i) => i !== index));
+              setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+          }
+      });
   };
 
   const handleSubGoalChange = (index: number, field: keyof SubGoal, value: any) => {
@@ -191,7 +208,13 @@ export function NewPlan() {
 
       setLoadingEvidence(index);
       try {
-          const suggestions = await generateAIEvidenceSuggestions(goal.title!, goal.description || '', currentUser?.hasWearable || false);
+          const timeContext = goal.dueTime || executionTime;
+          const suggestions = await generateAIEvidenceSuggestions(
+              goal.title!, 
+              goal.description || '', 
+              currentUser?.hasWearable || false,
+              timeContext
+          );
           
           const newSubGoals = [...subGoals];
           newSubGoals[index].evidenceOptions = suggestions;
@@ -217,23 +240,36 @@ export function NewPlan() {
   };
 
   const handleBulkApplyEvidence = (index: number) => {
-      if (!window.confirm('현재 목표의 [인증 방식, 설명, 메타데이터] 설정을 아래에 있는 모든 목표에 적용하시겠습니까?')) return;
+      setConfirmConfig({
+          isOpen: true,
+          title: '일괄 적용',
+          message: '현재 목표의 [인증 방식, 설명, 메타데이터] 설정을\n아래에 있는 모든 목표에 적용하시겠습니까?',
+          onConfirm: () => {
+              setSubGoals(prev => {
+                  const newSubGoals = [...prev];
+                  const sourceGoal = newSubGoals[index];
+                  
+                  if (!sourceGoal) return prev;
 
-      const sourceGoal = subGoals[index];
-      const newSubGoals = [...subGoals];
+                  const sourceEvidenceTypes = sourceGoal.evidenceTypes ? [...sourceGoal.evidenceTypes] : [];
 
-      for (let i = index + 1; i < newSubGoals.length; i++) {
-          newSubGoals[i] = {
-              ...newSubGoals[i],
-              evidenceTypes: sourceGoal.evidenceTypes ? [...sourceGoal.evidenceTypes] : [],
-              evidenceDescription: sourceGoal.evidenceDescription,
-              exampleTimeMetadata: sourceGoal.exampleTimeMetadata,
-              exampleBiometricData: sourceGoal.exampleBiometricData,
-              exampleLocationMetadata: sourceGoal.exampleLocationMetadata
-          };
-      }
-      setSubGoals(newSubGoals);
-      alert('일괄 적용되었습니다.');
+                  for (let i = index + 1; i < newSubGoals.length; i++) {
+                      newSubGoals[i] = {
+                          ...newSubGoals[i],
+                          evidenceTypes: [...sourceEvidenceTypes],
+                          evidenceDescription: sourceGoal.evidenceDescription || '',
+                          exampleTimeMetadata: sourceGoal.exampleTimeMetadata || '',
+                          exampleBiometricData: sourceGoal.exampleBiometricData || '',
+                          exampleLocationMetadata: sourceGoal.exampleLocationMetadata || ''
+                      };
+                  }
+                  return newSubGoals;
+              });
+              setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+              // Small delay to allow render update before alert
+              setTimeout(() => alert('일괄 적용되었습니다.'), 100);
+          }
+      });
   };
 
   const moveSubGoal = (index: number, direction: 'up' | 'down') => {
@@ -398,7 +434,7 @@ export function NewPlan() {
                             <input 
                                 className="flex-1 bg-transparent border-none p-0 text-sm font-bold placeholder-gray-400 focus:ring-0" 
                                 placeholder="목표 제목 입력 (필수)" 
-                                value={sg.title} 
+                                value={sg.title || ''} 
                                 onChange={(e) => handleSubGoalChange(idx, 'title', e.target.value)}
                             />
                             <div className="flex items-center gap-1 opacity-50 group-hover:opacity-100 transition-opacity">
@@ -413,7 +449,7 @@ export function NewPlan() {
                             <input 
                                 className="w-full bg-transparent border-b border-gray-200 p-0 pb-2 text-xs text-gray-600 placeholder-gray-400 focus:ring-0 focus:border-primary-500" 
                                 placeholder="상세 설명 (선택)" 
-                                value={sg.description} 
+                                value={sg.description || ''} 
                                 onChange={(e) => handleSubGoalChange(idx, 'description', e.target.value)}
                             />
                             
@@ -423,11 +459,11 @@ export function NewPlan() {
                                     <div className="flex flex-col gap-1 text-xs">
                                         <div className="flex items-center gap-1">
                                             <span className="text-[9px] text-gray-400 w-6">시작</span>
-                                            <input type="date" value={sg.startDate} onChange={(e) => handleSubGoalChange(idx, 'startDate', e.target.value)} className="flex-1 bg-white border border-gray-300 rounded p-1" />
+                                            <input type="date" value={sg.startDate || ''} onChange={(e) => handleSubGoalChange(idx, 'startDate', e.target.value)} className="flex-1 bg-white border border-gray-300 rounded p-1" />
                                         </div>
                                         <div className="flex items-center gap-1">
                                             <span className="text-[9px] text-gray-400 w-6">마감</span>
-                                            <input type="date" value={sg.dueDate} onChange={(e) => handleSubGoalChange(idx, 'dueDate', e.target.value)} className="flex-1 bg-white border border-gray-300 rounded p-1" />
+                                            <input type="date" value={sg.dueDate || ''} onChange={(e) => handleSubGoalChange(idx, 'dueDate', e.target.value)} className="flex-1 bg-white border border-gray-300 rounded p-1" />
                                         </div>
                                     </div>
                                 </div>
@@ -489,8 +525,12 @@ export function NewPlan() {
                                             {/* Bulk Apply Button */}
                                             {idx < subGoals.length - 1 && (
                                                 <button 
-                                                    onClick={() => handleBulkApplyEvidence(idx)}
-                                                    className="text-[10px] text-gray-400 hover:text-indigo-600 flex items-center gap-1 transition-colors"
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        handleBulkApplyEvidence(idx);
+                                                    }}
+                                                    className="text-[10px] text-gray-500 hover:text-indigo-600 hover:bg-gray-100 px-2 py-1 rounded flex items-center gap-1 transition-colors border border-transparent hover:border-gray-200"
                                                     title="이 설정(방식,설명,메타데이터)을 남은 모든 목표에 복사합니다"
                                                 >
                                                     <Layers className="w-3 h-3" /> 나머지 일괄 적용
@@ -520,7 +560,7 @@ export function NewPlan() {
                                     <input 
                                         className="w-full bg-white border border-gray-300 rounded p-2 text-xs placeholder-gray-400"
                                         placeholder="구체적인 인증 방법을 입력하세요 (예: 운동 완료 화면 캡처)"
-                                        value={sg.evidenceDescription}
+                                        value={sg.evidenceDescription || ''}
                                         onChange={(e) => handleSubGoalChange(idx, 'evidenceDescription', e.target.value)}
                                     />
                                     
@@ -628,6 +668,15 @@ export function NewPlan() {
             </div>
         </div>
        )}
+
+       <ConfirmDialog 
+           isOpen={confirmConfig.isOpen}
+           title={confirmConfig.title}
+           message={confirmConfig.message}
+           onConfirm={confirmConfig.onConfirm}
+           onCancel={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+           isDangerous={confirmConfig.isDangerous}
+       />
     </div>
   );
 }

@@ -1,10 +1,11 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { TrendingUp, Users, ArrowRight, CheckCircle2, Megaphone, Star, Gift, Heart, MessageCircle, Share2, MoreHorizontal, Smile, Trophy, Check, Hash, Flame, Plus, Crown, Medal, AlertCircle } from 'lucide-react';
+import { TrendingUp, Users, ArrowRight, CheckCircle2, Megaphone, Star, Gift, Heart, MessageCircle, Share2, MoreHorizontal, Smile, Trophy, Check, Hash, Flame, Plus, Crown, Medal, AlertCircle, Clock, CheckSquare } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Plan, Challenge, Certification } from '../types';
 import { Avatar } from '../components/Avatar';
 import { useAuth } from '../contexts/AuthContext';
-import { fetchMyActivePlans, fetchChallenges, fetchHallOfFame, fetchPopularFeeds, fetchFriendActivities } from '../services/dbService';
+import { fetchMyActivePlans, fetchChallenges, fetchHallOfFame, fetchPopularFeeds, fetchHomeFeed, HomeFeedItem, fetchPublicPlans } from '../services/dbService';
 
 // Mock Data for UI parts not connected to DB yet
 const banners = [
@@ -51,12 +52,23 @@ export function Home() {
   // Real Data State
   const [activePlans, setActivePlans] = useState<Plan[]>([]);
   const [challenges, setChallenges] = useState<Challenge[]>([]);
+  const [trendingPlans, setTrendingPlans] = useState<Plan[]>([]);
   const [bestHallOfFame, setBestHallOfFame] = useState<any[]>([]);
-  const [popularFeeds, setPopularFeeds] = useState<any[]>([]);
-  const [friendActivities, setFriendActivities] = useState<Certification[]>([]);
+  
+  // Feed State (Consolidated)
+  const [feedItems, setFeedItems] = useState<HomeFeedItem[]>([]);
+  const [lastFeedCursor, setLastFeedCursor] = useState<string | undefined>(undefined);
+  const [hasMoreFeeds, setHasMoreFeeds] = useState(true);
+  const [loadingFeeds, setLoadingFeeds] = useState(false);
+  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Infinite Scroll Refs
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // Initial Data Load
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
@@ -69,16 +81,21 @@ export function Home() {
         }
         
         const fetchedChallenges = await fetchChallenges();
-        setChallenges(fetchedChallenges.slice(0, 4)); // Show top 4
+        setChallenges(fetchedChallenges.slice(0, 4)); 
+        
+        // Trending Plans: Fetch public plans, sort by likes, take top 5
+        const publicPlans = await fetchPublicPlans();
+        const trending = publicPlans
+            .sort((a, b) => (b.likes || 0) - (a.likes || 0))
+            .slice(0, 5);
+        setTrendingPlans(trending);
         
         const fame = await fetchHallOfFame('BEST');
-        setBestHallOfFame(fame.slice(0, 3)); // Show top 3
+        setBestHallOfFame(fame.slice(0, 3)); 
 
-        const feeds = await fetchPopularFeeds();
-        setPopularFeeds(feeds); // Top 5
+        // Initial Feed Fetch
+        await loadMoreFeeds(true);
 
-        const friends = await fetchFriendActivities();
-        setFriendActivities(friends); // Recent Friend Activities
       } catch (e: any) { 
         console.error("Data loading error:", e);
         setError("데이터를 불러오는 중 오류가 발생했습니다. 네트워크 연결을 확인해주세요.");
@@ -98,6 +115,49 @@ export function Home() {
     return () => clearInterval(timer);
   }, []);
 
+  // Infinite Scroll Observer
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMoreFeeds && !loadingFeeds) {
+          loadMoreFeeds();
+        }
+      },
+      { 
+          threshold: 0.1,
+          root: scrollContainerRef.current, // CRITICAL: Observe relative to the scroll container
+          rootMargin: '100px'
+      }
+    );
+
+    if (loadMoreRef.current) {
+      observer.observe(loadMoreRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [hasMoreFeeds, loadingFeeds, lastFeedCursor]); // Added lastFeedCursor for freshness
+
+  const loadMoreFeeds = async (isInitial = false) => {
+      if (loadingFeeds) return;
+      setLoadingFeeds(true);
+      try {
+          const currentCursor = isInitial ? undefined : lastFeedCursor;
+          // Fetch slightly more items (10) to fill the screen
+          const { feedItems: newItems, nextCursor } = await fetchHomeFeed(currentCursor, 10);
+          
+          if (newItems.length === 0) {
+              setHasMoreFeeds(false);
+          } else {
+              setFeedItems(prev => isInitial ? newItems : [...prev, ...newItems]);
+              setLastFeedCursor(nextCursor);
+          }
+      } catch (e) {
+          console.error("Feed load error:", e);
+      } finally {
+          setLoadingFeeds(false);
+      }
+  };
+
   // Format Time Helper
   const formatTimeAgo = (dateString: string) => {
       const date = new Date(dateString);
@@ -110,11 +170,81 @@ export function Home() {
       return `${Math.floor(diffInSeconds / 86400)}일 전`;
   };
 
+  const renderFeedItem = (item: HomeFeedItem) => {
+      const isPlanCompletion = item.type === 'PLAN_COMPLETION';
+      const isChallengePost = item.type === 'CHALLENGE_POST';
+
+      return (
+          <div key={item.id} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm mb-4 animate-fade-in hover:shadow-md transition-shadow">
+              {/* Header */}
+              <div className="flex justify-between items-start mb-3">
+                  <div className="flex items-center gap-3">
+                      <Avatar src={item.user.avatarUrl} size="md" border />
+                      <div>
+                          <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-gray-900 text-sm">{item.user.nickname}</span>
+                              <span className="text-xs text-gray-400">• {formatTimeAgo(item.createdAt)}</span>
+                          </div>
+                          <div className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
+                              {isPlanCompletion ? (
+                                  <span className="text-green-600 font-bold flex items-center gap-1 bg-green-50 px-1.5 py-0.5 rounded">
+                                      <Trophy className="w-3 h-3" /> 계획 완주
+                                  </span>
+                              ) : isChallengePost ? (
+                                  <span className="text-indigo-600 font-bold flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded">
+                                      <Users className="w-3 h-3" /> 함께 도전하기
+                                  </span>
+                              ) : (
+                                  <span className="text-blue-600 font-bold flex items-center gap-1 bg-blue-50 px-1.5 py-0.5 rounded">
+                                      <CheckSquare className="w-3 h-3" /> 중간 인증
+                                  </span>
+                              )}
+                              <span className="truncate max-w-[150px] font-medium text-gray-700">
+                                  {item.relatedTitle}
+                              </span>
+                          </div>
+                      </div>
+                  </div>
+                  <button className="text-gray-300 hover:text-gray-600">
+                      <MoreHorizontal className="w-5 h-5" />
+                  </button>
+              </div>
+
+              {/* Content */}
+              <p className="text-sm text-gray-800 mb-3 whitespace-pre-line leading-relaxed">
+                  {item.content}
+              </p>
+
+              {/* Media */}
+              {item.imageUrl && (
+                  <div className="rounded-xl overflow-hidden mb-3 border border-gray-100 bg-gray-50">
+                      <img src={item.imageUrl} alt="Feed content" className="w-full h-auto max-h-96 object-contain mx-auto" />
+                  </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex items-center justify-between pt-3 border-t border-gray-50">
+                  <div className="flex gap-4">
+                      <button className="flex items-center gap-1.5 text-gray-500 hover:text-red-500 transition-colors text-sm font-medium">
+                          <Heart className="w-4 h-4" /> {item.likes || 0}
+                      </button>
+                      <button className="flex items-center gap-1.5 text-gray-500 hover:text-blue-500 transition-colors text-sm font-medium">
+                          <MessageCircle className="w-4 h-4" /> {item.comments || 0}
+                      </button>
+                  </div>
+                  <button className="text-gray-400 hover:text-yellow-500 transition-colors">
+                      <Star className="w-5 h-5" />
+                  </button>
+              </div>
+          </div>
+      );
+  };
+
   return (
-    <div className="space-y-10 pb-20 max-w-5xl mx-auto">
+    <div className="space-y-8 pb-20 max-w-5xl mx-auto">
       
       {/* 1. Dashboard Banner Carousel */}
-      <section className="relative w-full h-48 sm:h-64 rounded-3xl overflow-hidden shadow-lg group">
+      <section className="relative w-full h-[288px] rounded-3xl overflow-hidden shadow-lg group">
         {banners.map((banner, index) => {
           const Icon = banner.icon;
           const isActive = index === currentBannerIndex;
@@ -305,44 +435,65 @@ export function Home() {
         )}
       </section>
 
-      {/* 5.5 Popular Challenges Top 5 - FR-053 ~ FR-057 */}
+      {/* NEW: 5.5 Real-time Trending Plans (NOT Challenges/Rooms) TOP 5 */}
       <section>
         <div className="flex items-center justify-between mb-5">
-            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                <Flame className="w-6 h-6 text-red-500" fill="currentColor" />
-                인기 도전 Top 5
-            </h2>
+            <div>
+                <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                    <Flame className="w-6 h-6 text-red-500 fill-red-500 animate-pulse" />
+                    실시간 인기 도전 (개인 목표)
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">지금 가장 핫한 다른 유저들의 목표를 확인해보세요!</p>
+            </div>
             <button onClick={() => navigate('/trending')} className="text-sm text-gray-500 hover:text-gray-900 font-medium">더 보기</button>
         </div>
-        
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-            {popularFeeds.length > 0 ? popularFeeds.map((feed, idx) => (
-                <div 
-                    key={feed.id} 
-                    className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all border border-gray-100 cursor-pointer group flex flex-col" 
-                    onClick={() => feed.planId ? navigate(`/plan/${feed.planId}`) : navigate('/trending')}
-                >
-                    <div className="relative h-32 bg-gray-100 overflow-hidden">
-                        <img src={feed.imageUrl} alt="cert" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                        <div className="absolute top-2 left-2 bg-black/50 text-white w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold backdrop-blur-sm">
-                            {idx + 1}
+
+        <div className="bg-white rounded-3xl p-2 border border-gray-100 shadow-sm">
+            {trendingPlans.length > 0 ? (
+                <div className="divide-y divide-gray-50">
+                    {trendingPlans.map((plan, idx) => (
+                        <div 
+                            key={plan.id} 
+                            onClick={() => navigate(`/plan/${plan.id}`)}
+                            className="flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors cursor-pointer group rounded-xl"
+                        >
+                            {/* Rank */}
+                            <div className={`text-xl font-bold w-8 text-center ${idx < 3 ? 'text-red-500' : 'text-gray-400'}`}>
+                                {idx + 1}
+                            </div>
+                            
+                            {/* Image - Use Author Avatar if Plan image not available or small thumbnail */}
+                            <div className="w-12 h-12 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0 relative border border-gray-200">
+                                <img src={plan.imageUrl || plan.author.avatarUrl} alt={plan.title} className="w-full h-full object-cover" />
+                            </div>
+
+                            {/* Content */}
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-[10px] font-bold bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{plan.category}</span>
+                                    <div className="flex items-center gap-1 text-xs text-gray-500">
+                                        <span className="text-gray-300">|</span>
+                                        <span>{plan.author.nickname}</span>
+                                    </div>
+                                </div>
+                                <h3 className="font-bold text-gray-900 truncate group-hover:text-primary-600 transition-colors">{plan.title}</h3>
+                                <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
+                                    <span className="flex items-center gap-1 text-red-500 font-bold"><Heart className="w-3 h-3 fill-current" /> {plan.likes || 0}</span>
+                                    <span className="text-gray-300">|</span>
+                                    <span>진행률 {plan.progress}%</span>
+                                </div>
+                            </div>
+
+                            {/* Action Icon */}
+                            <div className="text-gray-300 group-hover:text-primary-500 transition-colors">
+                                <ArrowRight className="w-5 h-5" />
+                            </div>
                         </div>
-                    </div>
-                    <div className="p-3 flex flex-col flex-1">
-                        <h4 className="font-bold text-gray-900 text-sm mb-1 line-clamp-1">{feed.relatedGoalTitle}</h4>
-                        <div className="flex items-center gap-2 mb-2">
-                            <Avatar src={feed.user.avatarUrl} size="sm" />
-                            <span className="text-xs text-gray-500 truncate">{feed.user.nickname}</span>
-                        </div>
-                        <div className="mt-auto flex items-center gap-3 text-xs text-gray-400 border-t border-gray-50 pt-2">
-                            <span className="flex items-center gap-1 hover:text-red-500 transition-colors"><Heart className="w-3 h-3" /> {feed.likes}</span>
-                            <span className="flex items-center gap-1 hover:text-blue-500 transition-colors"><MessageCircle className="w-3 h-3" /> {feed.comments}</span>
-                        </div>
-                    </div>
+                    ))}
                 </div>
-            )) : (
-                <div className="col-span-full py-8 text-center text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-                    인기 도전이 없습니다.
+            ) : (
+                <div className="py-12 text-center text-gray-400">
+                    실시간 인기 목표를 집계 중입니다...
                 </div>
             )}
         </div>
@@ -354,7 +505,7 @@ export function Home() {
             <div>
                 <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                     <Trophy className="w-6 h-6 text-orange-500" />
-                    함께 도전하기
+                    추천 챌린지 (그룹)
                 </h2>
                 <p className="text-sm text-gray-500 mt-1">회원님의 관심사에 딱 맞는 방을 찾아보세요.</p>
             </div>
@@ -391,59 +542,79 @@ export function Home() {
         </div>
       </section>
 
-      {/* Friends Feed (Real Data) */}
-      <section className="bg-white rounded-3xl p-6 sm:p-8 shadow-[0_2px_12px_0_rgba(0,0,0,0.06)] border border-gray-100">
-          <div className="flex items-center justify-between mb-6">
+      {/* Friends Feed (Thread Style) - Fixed Height Container with Infinite Scroll */}
+      <section className="bg-gray-50/50 pt-2 border-t border-gray-100 mt-4 pb-10">
+          <div className="flex items-center justify-between mb-6 px-1 pt-6 max-w-2xl mx-auto">
             <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                 <Users className="w-6 h-6 text-indigo-500" />
                 친구들의 활동
             </h2>
-            <span className="text-xs text-gray-400 font-medium bg-gray-50 px-2 py-1 rounded-lg">실시간 업데이트</span>
+            <span className="text-xs text-gray-400 font-medium bg-white px-2 py-1 rounded-lg border border-gray-200 shadow-sm">실시간 피드</span>
           </div>
           
-          <div className="space-y-4">
-              {friendActivities.length > 0 ? friendActivities.map((activity) => (
-                  <div key={activity.id} className="flex gap-4 p-4 hover:bg-gray-50 rounded-2xl transition-colors cursor-pointer border border-transparent hover:border-gray-100 group" onClick={() => activity.planId && navigate(`/plan/${activity.planId}`)}>
-                      <Avatar src={activity.user.avatarUrl} size="md" />
-                      <div className="flex-1">
-                          <div className="flex items-center justify-between mb-1">
-                              <div className="flex items-center gap-2">
-                                  <span className="font-bold text-gray-900 text-sm">{activity.user.nickname}</span>
-                                  <span className="text-xs text-gray-400">• {formatTimeAgo(activity.createdAt)}</span>
-                              </div>
-                              {activity.imageUrl && (
-                                  <span className="text-xs text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded font-bold group-hover:bg-indigo-100 transition-colors">
-                                      📸 인증샷
-                                  </span>
-                              )}
-                          </div>
-                          <p className="text-sm text-gray-600 mb-2">
-                              <span className="font-bold text-gray-800">"{activity.relatedGoalTitle}"</span> 목표를 인증했습니다.
-                          </p>
-                          <div className="bg-gray-50 p-3 rounded-xl text-sm text-gray-500 italic border border-gray-100">
-                              "{activity.description}"
-                          </div>
-                          
-                          <div className="flex items-center gap-4 mt-3">
-                              <button className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-500 transition-colors">
-                                  <Heart className="w-3.5 h-3.5" /> 좋아요 {activity.likes}
-                              </button>
-                              <button className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-500 transition-colors">
-                                  <MessageCircle className="w-3.5 h-3.5" /> 댓글 {activity.comments}
-                              </button>
-                          </div>
-                      </div>
-                      {activity.imageUrl && (
-                          <div className="w-20 h-20 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0 border border-gray-200">
-                              <img src={activity.imageUrl} alt="activity" className="w-full h-full object-cover" />
-                          </div>
-                      )}
+          {/* Scrollable Container with Fixed Height */}
+          <div 
+            ref={scrollContainerRef}
+            className="max-w-2xl mx-auto h-[800px] overflow-y-auto pr-2 custom-scrollbar scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent rounded-2xl relative"
+          >
+              {feedItems.length > 0 ? (
+                  <>
+                    {/* Render List with Dynamic Divider */}
+                    {(() => {
+                        let dividerShown = false;
+                        return feedItems.map((item, idx) => {
+                            // Divider Logic: Show before the first item that is NOT recent (older than 48h)
+                            const showDivider = !item.isRecent && !dividerShown;
+                            if (showDivider) {
+                                dividerShown = true;
+                            }
+
+                            return (
+                                <React.Fragment key={item.id}>
+                                    {showDivider && (
+                                        <div className="py-12 text-center animate-fade-in">
+                                            <div className="flex flex-col items-center justify-center">
+                                                <div className="w-16 h-16 bg-gradient-to-br from-green-50 to-green-100 text-green-600 rounded-full flex items-center justify-center mb-3 shadow-[0_4px_12px_0_rgba(22,163,74,0.15)] border-4 border-white ring-1 ring-gray-100">
+                                                    <CheckCircle2 className="w-8 h-8" strokeWidth={3} />
+                                                </div>
+                                                <h3 className="font-bold text-gray-900 text-lg mb-1">모든 최신 활동을 확인했습니다</h3>
+                                                <p className="text-gray-500 text-sm">48시간 이내의 새 소식을 모두 보셨습니다.<br/>아래는 이전 활동 내역입니다.</p>
+                                            </div>
+                                            <div className="flex items-center gap-4 mt-8 opacity-50">
+                                                <div className="h-px bg-gray-300 flex-1"></div>
+                                                <div className="text-xs font-bold text-gray-400 uppercase tracking-widest">이전 활동</div>
+                                                <div className="h-px bg-gray-300 flex-1"></div>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {renderFeedItem(item)}
+                                </React.Fragment>
+                            );
+                        });
+                    })()}
+                  </>
+              ) : (
+                  <div className="text-center py-20 text-gray-400 bg-white rounded-2xl border border-dashed border-gray-200 h-full flex flex-col items-center justify-center">
+                      <Clock className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                      <p className="text-lg font-bold text-gray-500 mb-1">아직 등록된 활동이 없습니다.</p>
+                      <p className="text-sm">친구를 팔로우하거나 챌린지에 참여해보세요.</p>
                   </div>
-              )) : (
-                  <div className="h-40 flex flex-col items-center justify-center text-gray-400 text-sm border-2 border-dashed border-gray-100 rounded-xl">
-                      <Users className="w-8 h-8 mb-2 opacity-20" />
-                      <p>아직 친구들의 소식이 없습니다.</p>
-                      <p className="text-xs mt-1">설정 &gt; 초기 데이터 생성을 통해 샘플 데이터를 추가해보세요.</p>
+              )}
+
+              {/* Loader Trigger for Infinite Scroll */}
+              {hasMoreFeeds && (
+                  <div ref={loadMoreRef} className="py-8 text-center">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-300 mx-auto"></div>
+                  </div>
+              )}
+
+              {/* End of Content Message - Show ONLY if we have items AND no more feeds to load */}
+              {!hasMoreFeeds && feedItems.length > 0 && (
+                  <div className="py-10 text-center text-gray-400 text-sm flex flex-col items-center gap-2">
+                      <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
+                          <Check className="w-5 h-5 text-gray-400" />
+                      </div>
+                      모든 활동을 확인했습니다.
                   </div>
               )}
           </div>

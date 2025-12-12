@@ -191,7 +191,8 @@ export const generateRandomMission = async (request: AIMissionRequest): Promise<
 export const generateAIEvidenceSuggestions = async (
   title: string, 
   description: string, 
-  hasWearable: boolean
+  hasWearable: boolean,
+  timeContext?: string
 ) => {
   if (!apiKey) {
     console.error("API Key is missing");
@@ -204,6 +205,7 @@ export const generateAIEvidenceSuggestions = async (
     - Goal: ${title}
     - Description: ${description}
     - User has Wearable Device: ${hasWearable ? 'YES' : 'NO'}
+    - Specific Execution Time: ${timeContext || 'Flexible/None'}
 
     For each option, provide:
     1. Type: Choose one from [PHOTO, VIDEO, TEXT, APP_CAPTURE, BIOMETRIC, EMAIL, API].
@@ -212,9 +214,14 @@ export const generateAIEvidenceSuggestions = async (
        - Use 'API' for official scores.
     2. Description: Specific instruction.
     3. Metadata:
-       - timeMetadata: recommended time.
+       - timeMetadata: recommended time (e.g. ${timeContext || 'N/A'}).
        - biometricData: target values if BIOMETRIC.
        - locationMetadata: target place if relevant.
+
+    **CRITICAL RULE FOR TIME VERIFICATION**:
+    If 'Specific Execution Time' is provided (e.g., "07:00", "Morning") OR if the Goal/Description implies a specific time:
+    - If the suggested 'Type' is **PHOTO** or **VIDEO**, the 'Description' MUST explicitly state that a **clock, watch, or screen showing the timestamp** must be included in the frame.
+    - Example: "Take a photo of your running shoes with a watch showing ${timeContext || 'the time'}."
 
     Output JSON format.
   `;

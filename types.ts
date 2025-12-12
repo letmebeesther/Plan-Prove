@@ -17,9 +17,11 @@ export interface User {
 export interface Evidence {
   id: string;
   type: 'PHOTO' | 'VIDEO' | 'TEXT' | 'APP_CAPTURE' | 'BIOMETRIC' | 'EMAIL' | 'API'; // Added EMAIL, API
-  url?: string; // For photo/video
+  url?: string; // For photo/video (Primary URL)
+  imageUrls?: string[]; // For multiple photos
   content?: string; // For text/description
-  fileHash?: string; // SHA-256 Hash
+  fileHash?: string; // SHA-256 Hash (Primary)
+  fileHashes?: string[]; // Hashes for multiple files
   status: 'APPROVED' | 'WARNING' | 'PENDING' | 'REJECTED'; // FR-053 (AI Status)
   createdAt: string;
   feedback?: string; // AI Feedback
