@@ -1,11 +1,9 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
     Calendar, ChevronLeft, Target, Clock, CheckCircle2, AlertCircle, 
     Upload, Camera, Type as TypeIcon, Mail, Link as LinkIcon, MoreHorizontal,
-    Share2, Bookmark, Trash2, X, AlertTriangle, PlayCircle, ShieldCheck,
-    BarChart3, TrendingUp, Info
+    Share2, Bookmark, Trash2, X, AlertTriangle, PlayCircle
 } from 'lucide-react';
 import { Plan, Evidence, SubGoal } from '../types';
 import { fetchPlanById, submitEvidence, updateSubGoalStatus, deletePlan, toggleScrap } from '../services/dbService';
@@ -18,20 +16,12 @@ import { Avatar } from '../components/Avatar';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { Input } from '../components/common/Input';
 
-// 허용할 도메인 리스트 정의 (와일드카드 지원)
-const ALLOWED_PATTERNS = [
-    "*.ac.kr",
-    "*.edu",
+// 허용할 도메인 리스트 정의 (학교/회사 전용)
+const ALLOWED_DOMAINS = [
+    "university.edu",
     "company.co.kr",
     "mycorp.com",
     "ajou.ac.kr",
-    "g.baewha.ac.kr",
-    "baewha.ac.kr"
-];
-
-// 차단할 도메인 (개인 이메일 등)
-const BLOCKED_DOMAINS = [
-    "gmail.com", "naver.com", "daum.net", "kakao.com", "hotmail.com", "outlook.com", "nate.com"
 ];
 
 export function PlanDetail() {
@@ -43,9 +33,6 @@ export function PlanDetail() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isScrapped, setIsScrapped] = useState(false);
-    
-    // Graph State
-    const [activeGraphTab, setActiveGraphTab] = useState<'PROGRESS' | 'CREDIBILITY'>('PROGRESS');
     
     // Evidence Modal State
     const [showCertModal, setShowCertModal] = useState(false);
@@ -61,7 +48,6 @@ export function PlanDetail() {
     const [verificationCodeInput, setVerificationCodeInput] = useState('');
     const [generatedCode, setGeneratedCode] = useState<string | null>(null);
     const [emailSending, setEmailSending] = useState(false);
-    const [emailError, setEmailError] = useState<string | null>(null);
 
     const [submitting, setSubmitting] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -86,60 +72,6 @@ export function PlanDetail() {
             setLoading(false);
         }
     };
-
-    // Helper for Analysis Data
-    const getAnalysisData = () => {
-        if (!plan || !plan.subGoals || plan.subGoals.length === 0) return { progressHistory: [], credibilityScores: [] };
-
-        const totalGoals = plan.subGoals.length;
-        
-        // Progress History
-        // Start with 0% at start date
-        let history = [{ date: '시작', value: 0, sortDate: new Date(plan.startDate).getTime() }];
-        
-        // Find all completed goals with timestamps
-        const completed = plan.subGoals
-            .filter(g => g.status === 'completed' && g.evidences && g.evidences.length > 0)
-            .map(g => {
-                const lastEvidence = g.evidences![g.evidences!.length - 1];
-                return {
-                    date: new Date(lastEvidence.createdAt),
-                    title: g.title
-                };
-            })
-            .sort((a, b) => a.date.getTime() - b.date.getTime());
-
-        // Calculate cumulative progress
-        let currentProg = 0;
-        const step = 100 / totalGoals;
-        
-        completed.forEach(c => {
-            currentProg += step;
-            history.push({
-                date: c.date.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }),
-                value: Math.min(Math.round(currentProg), 100),
-                sortDate: c.date.getTime()
-            });
-        });
-
-        // Credibility Scores
-        const scores = plan.subGoals.map((sg, i) => {
-            if (sg.status !== 'completed' || !sg.evidences || sg.evidences.length === 0) {
-                return { label: `${i+1}`, score: 0, title: sg.title, isCompleted: false };
-            }
-            const ev = sg.evidences[sg.evidences.length - 1];
-            return {
-                label: `${i+1}`,
-                score: ev.credibilityScore || 0,
-                title: sg.title,
-                isCompleted: true
-            };
-        });
-
-        return { progressHistory: history, credibilityScores: scores };
-    };
-
-    const { progressHistory, credibilityScores } = getAnalysisData();
 
     const handleScrapToggle = async () => {
         if (!currentUser || !plan) return;
@@ -168,7 +100,6 @@ export function PlanDetail() {
         setEmailVerificationSent(false);
         setVerificationCodeInput('');
         setGeneratedCode(null);
-        setEmailError(null);
         setShowCertModal(true);
     };
 
@@ -182,34 +113,17 @@ export function PlanDetail() {
 
     const isDomainAllowed = (email: string) => {
         if (!email.includes('@')) return false;
-        const domain = email.split('@')[1].trim().toLowerCase();
+        const domain = email.split('@')[1];
         if (!domain) return false;
-
-        // 1. 차단 도메인 확인
-        if (BLOCKED_DOMAINS.includes(domain)) return false;
-
-        // 2. 허용 패턴 확인 (와일드카드 지원)
-        return ALLOWED_PATTERNS.some(pattern => {
-            if (pattern.startsWith('*')) {
-                // *.ac.kr -> regex: ^.*\.ac\.kr$
-                const regexStr = '^' + pattern.replace(/\./g, '\\.').replace(/\*/g, '.*') + '$';
-                const regex = new RegExp(regexStr);
-                return regex.test(domain);
-            }
-            return domain === pattern.toLowerCase();
-        });
+        return ALLOWED_DOMAINS.includes(domain.toLowerCase());
     };
 
     const handleSendVerificationEmail = async () => {
-        setEmailError(null);
         if (!certEmail) return alert('이메일을 입력해주세요.');
         
         // 도메인 검증
         if (!isDomainAllowed(certEmail)) {
-            const msg = `허용되지 않는 도메인입니다.\n학교 또는 회사 이메일만 사용 가능합니다.\n(허용: ${ALLOWED_PATTERNS.join(', ')})`;
-            setEmailError(msg);
-            alert(msg);
-            return;
+            return alert(`허용되지 않는 도메인입니다.\n학교 또는 회사 이메일만 사용 가능합니다.\n(허용 도메인: ${ALLOWED_DOMAINS.join(', ')})`);
         }
 
         setEmailSending(true);
@@ -236,8 +150,7 @@ export function PlanDetail() {
                 id: `ev-${Date.now()}`,
                 type: certType,
                 status: 'PENDING',
-                createdAt: new Date().toISOString(),
-                credibilityScore: Math.floor(Math.random() * 11) + 89 // 89 ~ 99 점 랜덤 부여 (AI 분석 시뮬레이션)
+                createdAt: new Date().toISOString()
             };
 
             // Type specific validation & data
@@ -256,7 +169,6 @@ export function PlanDetail() {
                 if (verificationCodeInput !== generatedCode) throw new Error('인증 코드가 일치하지 않습니다.');
                 evidenceData.verifiedEmail = certEmail;
                 evidenceData.status = 'APPROVED'; // Auto-approve for email verification
-                evidenceData.credibilityScore = 100; // 이메일 인증은 신뢰도 100
             }
 
             await submitEvidence(plan.id, selectedSubGoalIndex, evidenceData);
@@ -339,195 +251,52 @@ export function PlanDetail() {
                 </div>
             </div>
 
-            {/* NEW: Analysis & Graph Section */}
-            <div className="bg-white rounded-3xl p-6 border border-gray-100 mb-8 shadow-sm">
-                <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-lg font-bold flex items-center gap-2 text-gray-900">
-                        <BarChart3 className="w-5 h-5 text-primary-600" />
-                        성취도 분석
-                    </h2>
-                    <div className="flex bg-gray-100 p-1 rounded-xl">
-                        <button 
-                            onClick={() => setActiveGraphTab('PROGRESS')}
-                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${activeGraphTab === 'PROGRESS' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
-                        >
-                            달성 추이
-                        </button>
-                        <button 
-                            onClick={() => setActiveGraphTab('CREDIBILITY')}
-                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${activeGraphTab === 'CREDIBILITY' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
-                        >
-                            신빙성 점수
-                        </button>
-                    </div>
-                </div>
-
-                <div className="h-64 w-full bg-gray-50 rounded-2xl p-6 flex items-end relative overflow-hidden border border-gray-100">
-                    {activeGraphTab === 'PROGRESS' ? (
-                         progressHistory.length > 0 ? (
-                            <div className="w-full h-full relative">
-                                <svg className="w-full h-full overflow-visible" viewBox={`0 0 100 100`} preserveAspectRatio="none">
-                                    {/* Grid Lines */}
-                                    <line x1="0" y1="0" x2="100" y2="0" stroke="#e5e7eb" strokeWidth="0.5" strokeDasharray="2 2" vectorEffect="non-scaling-stroke" />
-                                    <line x1="0" y1="50" x2="100" y2="50" stroke="#e5e7eb" strokeWidth="0.5" strokeDasharray="2 2" vectorEffect="non-scaling-stroke" />
-                                    <line x1="0" y1="100" x2="100" y2="100" stroke="#e5e7eb" strokeWidth="0.5" vectorEffect="non-scaling-stroke" />
-
-                                    {/* Line Graph */}
-                                    <polyline
-                                        fill="none"
-                                        stroke="#0ea5e9"
-                                        strokeWidth="2"
-                                        points={progressHistory.map((p, i) => {
-                                            const x = (i / (progressHistory.length - 1)) * 100;
-                                            const y = 100 - p.value;
-                                            return `${x},${y}`;
-                                        }).join(' ')}
-                                        vectorEffect="non-scaling-stroke"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                    />
-                                    
-                                    {/* Gradient Area under line (Optional for polish) */}
-                                    <polygon 
-                                        fill="url(#progress-gradient)" 
-                                        points={`0,100 ${progressHistory.map((p, i) => {
-                                            const x = (i / (progressHistory.length - 1)) * 100;
-                                            const y = 100 - p.value;
-                                            return `${x},${y}`;
-                                        }).join(' ')} 100,100`} 
-                                        opacity="0.2"
-                                    />
-                                    <defs>
-                                        <linearGradient id="progress-gradient" x1="0" x2="0" y1="0" y2="1">
-                                            <stop offset="0%" stopColor="#0ea5e9" />
-                                            <stop offset="100%" stopColor="#ffffff" />
-                                        </linearGradient>
-                                    </defs>
-                                </svg>
-
-                                {/* Points and Labels Overlay */}
-                                <div className="absolute inset-0 pointer-events-none">
-                                    {progressHistory.map((p, i) => {
-                                        const left = (i / (progressHistory.length - 1)) * 100;
-                                        const bottom = p.value;
-                                        return (
-                                            <div key={i} className="absolute group transform -translate-x-1/2 translate-y-1/2 flex flex-col items-center" style={{ left: `${left}%`, bottom: `${bottom}%` }}>
-                                                <div className="w-3 h-3 bg-white border-2 border-primary-600 rounded-full shadow-sm z-10 group-hover:scale-125 transition-transform duration-200"></div>
-                                                <div className="absolute bottom-4 bg-gray-900 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20 pointer-events-auto">
-                                                    {p.date}: {p.value}%
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                                {/* Date Labels on X-axis */}
-                                <div className="absolute bottom-[-24px] left-0 w-full flex justify-between text-[10px] text-gray-400 px-1">
-                                    {progressHistory.map((p, i) => (
-                                        <span key={i}>{p.date}</span>
-                                    ))}
-                                </div>
-                            </div>
-                         ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center text-gray-400">
-                                <TrendingUp className="w-8 h-8 mb-2 opacity-20" />
-                                <span className="text-sm">데이터가 충분하지 않습니다.</span>
-                            </div>
-                         )
-                    ) : (
-                         // Bar Chart Logic
-                         <div className="w-full h-full flex items-end justify-between gap-2 px-2">
-                            {credibilityScores.length > 0 ? credibilityScores.map((score, i) => (
-                                <div key={i} className="flex-1 flex flex-col items-center group relative h-full justify-end">
-                                    <div 
-                                        className={`w-full max-w-[20px] rounded-t-md transition-all duration-500 relative ${
-                                            !score.isCompleted ? 'bg-gray-100 h-2' :
-                                            score.score >= 90 ? 'bg-green-400 hover:bg-green-500' : 
-                                            score.score >= 70 ? 'bg-indigo-400 hover:bg-indigo-500' : 'bg-yellow-400 hover:bg-yellow-500'
-                                        }`} 
-                                        style={{ height: score.isCompleted ? `${score.score}%` : '8px' }}
-                                    >
-                                        {score.isCompleted && (
-                                            <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-xs font-bold text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                {score.score}
-                                            </div>
-                                        )}
-                                    </div>
-                                    <span className="text-[10px] text-gray-400 mt-2">{score.label}</span>
-                                </div>
-                            )) : (
-                                <div className="w-full h-full flex flex-col items-center justify-center text-gray-400">
-                                    <ShieldCheck className="w-8 h-8 mb-2 opacity-20" />
-                                    <span className="text-sm">인증 기록이 없습니다.</span>
-                                </div>
-                            )}
-                         </div>
-                    )}
-                </div>
-            </div>
-
             {/* SubGoals List */}
             <div className="space-y-4">
                 <h2 className="text-xl font-bold text-gray-900 mb-4 px-2">세부 목표 ({plan.subGoals.length})</h2>
-                {plan.subGoals.map((sg, idx) => {
-                    const latestEvidence = sg.evidences && sg.evidences.length > 0 ? sg.evidences[sg.evidences.length - 1] : null;
-                    const credibilityScore = latestEvidence?.credibilityScore;
-
-                    return (
-                        <div key={idx} className={`bg-white rounded-2xl p-5 border transition-all ${sg.status === 'completed' ? 'border-green-200 bg-green-50/30' : 'border-gray-100'}`}>
-                            <div className="flex justify-between items-start gap-4">
-                                <div className="flex-1">
-                                    <div className="flex items-center gap-3 mb-2">
-                                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                                            sg.status === 'completed' ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-500'
-                                        }`}>
-                                            {sg.status === 'completed' ? <CheckCircle2 className="w-4 h-4" /> : idx + 1}
-                                        </div>
-                                        <h3 className={`font-bold text-gray-900 ${sg.status === 'completed' ? 'line-through text-gray-400' : ''}`}>{sg.title}</h3>
+                {plan.subGoals.map((sg, idx) => (
+                    <div key={idx} className={`bg-white rounded-2xl p-5 border transition-all ${sg.status === 'completed' ? 'border-green-200 bg-green-50/30' : 'border-gray-100'}`}>
+                        <div className="flex justify-between items-start gap-4">
+                            <div className="flex-1">
+                                <div className="flex items-center gap-3 mb-2">
+                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                                        sg.status === 'completed' ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-500'
+                                    }`}>
+                                        {sg.status === 'completed' ? <CheckCircle2 className="w-4 h-4" /> : idx + 1}
                                     </div>
-                                    <p className="text-sm text-gray-500 pl-9 mb-3">{sg.description}</p>
-                                    
-                                    {sg.status === 'completed' && sg.evidences && sg.evidences.length > 0 && (
-                                        <div className="pl-9 mb-2">
-                                            <div className="flex items-center gap-2 mb-2">
-                                                <div className="text-xs text-green-600 font-bold flex items-center gap-1">
-                                                    <CheckCircle2 className="w-3 h-3" /> 인증 완료 ({sg.evidences.length})
-                                                </div>
-                                                {credibilityScore && (
-                                                    <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100 flex items-center gap-1">
-                                                        <ShieldCheck className="w-3 h-3" /> 신빙성 {credibilityScore}%
-                                                    </span>
-                                                )}
-                                            </div>
-                                            {/* Evidence Preview if photo */}
-                                            <div className="flex gap-2">
-                                                {sg.evidences.filter(e => e.type === 'PHOTO').map((e, i) => (
-                                                    <div key={i} className="relative w-12 h-12 rounded-lg bg-gray-100 overflow-hidden border border-gray-200 group">
-                                                        <img src={e.url} alt="evidence" className="w-full h-full object-cover" />
-                                                        {e.credibilityScore && (
-                                                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                <span className="text-white text-[10px] font-bold">{e.credibilityScore}%</span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
+                                    <h3 className={`font-bold text-gray-900 ${sg.status === 'completed' ? 'line-through text-gray-400' : ''}`}>{sg.title}</h3>
                                 </div>
+                                <p className="text-sm text-gray-500 pl-9 mb-3">{sg.description}</p>
                                 
-                                {isAuthor && sg.status !== 'completed' && (
-                                    <Button 
-                                        size="sm" 
-                                        onClick={() => handleOpenCertModal(idx, sg)}
-                                        className="shrink-0"
-                                    >
-                                        인증하기
-                                    </Button>
+                                {sg.status === 'completed' && sg.evidences && sg.evidences.length > 0 && (
+                                    <div className="pl-9 mb-2">
+                                        <div className="text-xs text-green-600 font-bold mb-1 flex items-center gap-1">
+                                            <CheckCircle2 className="w-3 h-3" /> 인증 완료 ({sg.evidences.length})
+                                        </div>
+                                        {/* Evidence Preview if photo */}
+                                        <div className="flex gap-2">
+                                            {sg.evidences.filter(e => e.type === 'PHOTO').map((e, i) => (
+                                                <div key={i} className="w-12 h-12 rounded-lg bg-gray-100 overflow-hidden border border-gray-200">
+                                                    <img src={e.url} alt="evidence" className="w-full h-full object-cover" />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
                                 )}
                             </div>
+                            
+                            {isAuthor && sg.status !== 'completed' && (
+                                <Button 
+                                    size="sm" 
+                                    onClick={() => handleOpenCertModal(idx, sg)}
+                                    className="shrink-0"
+                                >
+                                    인증하기
+                                </Button>
+                            )}
                         </div>
-                    );
-                })}
+                    </div>
+                ))}
             </div>
 
             {/* Certification Modal */}
@@ -622,7 +391,7 @@ export function PlanDetail() {
                                         </div>
                                         <p>인증 코드를 발송하여 소속을 검증합니다.</p>
                                         <p className="mt-1 opacity-80 text-[10px]">
-                                            * 허용 도메인: {ALLOWED_PATTERNS.join(', ')}
+                                            * 허용 도메인: {ALLOWED_DOMAINS.join(', ')}
                                         </p>
                                     </div>
                                     <div className="flex gap-2">
@@ -643,12 +412,6 @@ export function PlanDetail() {
                                             {emailSending ? '전송중' : emailVerificationSent ? '전송완료' : '코드전송'}
                                         </Button>
                                     </div>
-                                    {emailError && (
-                                        <div className="text-xs text-red-500 whitespace-pre-line bg-red-50 p-2 rounded-lg border border-red-100 flex items-start gap-1">
-                                            <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
-                                            {emailError}
-                                        </div>
-                                    )}
                                     {emailVerificationSent && (
                                         <div className="space-y-2">
                                             <Input 
@@ -689,4 +452,3 @@ export function PlanDetail() {
         </div>
     );
 }
-    

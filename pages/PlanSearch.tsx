@@ -327,7 +327,7 @@ export function PlanSearch() {
                                                 <p className="text-xs text-gray-500 line-clamp-1 mb-2">{item.description}</p>
                                                 
                                                 <div className="flex items-center gap-2 mb-3">
-                                                    <Avatar src={item.avatarUrl} size="xs" />
+                                                    <Avatar src={item.avatarUrl} size="sm" />
                                                     <span className="text-xs font-bold text-gray-700">{item.authorName || '익명'}</span>
                                                     {item.category && (
                                                         <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{item.category}</span>

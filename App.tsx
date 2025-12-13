@@ -22,6 +22,7 @@ import { UserProfile } from './pages/UserProfile';
 import { ChatPage } from './pages/ChatPage';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Flame } from 'lucide-react';
+import { initEmailService } from './services/emailService';
 
 interface SplashScreenProps {
   onFinish: () => void;
@@ -112,6 +113,10 @@ function AppRoutes() {
 }
 
 function App() {
+  useEffect(() => {
+    initEmailService();
+  }, []);
+
   return (
     <AuthProvider>
       <AppRoutes />

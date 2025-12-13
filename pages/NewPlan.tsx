@@ -1,16 +1,13 @@
-
 import React, { useState } from 'react';
 import { 
-    Wand2, Calendar, Target, AlignLeft, AlertCircle, Plus, Trash2, ArrowRight, 
-    Check, Sparkles, Save, X, ArrowUp, ArrowDown, HelpCircle, Clock, Activity, MousePointerClick, MapPin, Mail, Link as LinkIcon, Layers
+    Calendar, Target, AlignLeft, AlertCircle, Plus, Trash2, X, Sparkles, Clock, Wand2
 } from 'lucide-react';
-import { generateAIPlan, AIPlanResponse, generateAIEvidenceSuggestions } from '../services/geminiService';
+import { generateAIPlan, generateAIEvidenceSuggestions } from '../services/geminiService';
 import { createPlan } from '../services/dbService';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/common/Button';
-import { Input } from '../components/common/Input';
 import { useNavigate } from 'react-router-dom';
-import { SubGoal, EvidenceOption } from '../types';
+import { SubGoal } from '../types';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 
 const categories = ['건강관리', '어학', '자격증', '공부루틴', '커리어스킬', '생활루틴', '재정관리', '취미', '독서', '운동'];
@@ -19,12 +16,12 @@ export function NewPlan() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   
-  // AI Generator Modal State
+  // AI Modal State
   const [showAIModal, setShowAIModal] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   
-  // Confirmation Modal State
+  // Confirmation State
   const [confirmConfig, setConfirmConfig] = useState<{
       isOpen: boolean;
       title: string;
@@ -37,43 +34,39 @@ export function NewPlan() {
   const [levelInput, setLevelInput] = useState('초급');
   const [styleInput, setStyleInput] = useState('꾸준하게');
 
-  // Main Form State
+  // Form State
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('건강관리');
   const [description, setDescription] = useState('');
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState('');
-  const [executionTime, setExecutionTime] = useState(''); 
   
-  // SubGoals State
+  const [executionStartTime, setExecutionStartTime] = useState('');
+  const [executionEndTime, setExecutionEndTime] = useState('');
+  
   const [subGoals, setSubGoals] = useState<Partial<SubGoal>[]>([]);
   const [saving, setSaving] = useState(false);
-  const [loadingEvidence, setLoadingEvidence] = useState<number | null>(null); // Index of sub-goal loading suggestions
+  const [loadingEvidence, setLoadingEvidence] = useState<number | null>(null);
 
-  // Helper to calculate max end date (3 months from start)
   const getMaxEndDate = () => {
       const start = new Date(startDate);
       const maxDate = new Date(start);
-      maxDate.setDate(maxDate.getDate() + 90); // 3 months limit
+      maxDate.setDate(maxDate.getDate() + 180); // Max 6 months
       return maxDate.toISOString().split('T')[0];
   };
-
-  // --- Handlers ---
 
   const handleOpenAIModal = () => {
       if (!title) return alert('계획 제목을 먼저 입력해주세요.');
       if (!startDate || !endDate) return alert('시작일과 마감일을 입력해주세요.');
-      // Enforce Time Input for AI
-      if (!executionTime) return alert('AI 생성을 위해 [주로 실천할 시간]을 먼저 입력해주세요. (필수)');
+      // executionStartTime validation removed as per request
       
       const start = new Date(startDate);
       const end = new Date(endDate);
       const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
 
-      if (diffDays > 90) {
-          return alert('최대 기간은 3개월(90일)입니다. 더 긴 목표는 "파트 2"로 나누어 계획을 세워주세요.');
+      if (diffDays > 180) {
+          return alert('최대 기간은 6개월(180일)입니다. 더 긴 목표는 "파트 2"로 나누어 계획을 세워주세요.');
       }
-      
       if (endDate < startDate) return alert('마감일은 시작일보다 이후여야 합니다.');
       
       setShowAIModal(true);
@@ -92,7 +85,7 @@ export function NewPlan() {
               ...item,
               startDate: itemStart.toISOString().split('T')[0],
               dueDate: itemEnd.toISOString().split('T')[0],
-              dueTime: executionTime || '' 
+              dueTime: executionStartTime || '' 
           };
       });
   };
@@ -100,7 +93,6 @@ export function NewPlan() {
   const handleAiGenerateSubGoals = async () => {
     setAiLoading(true);
     setAiError('');
-    
     try {
       const start = new Date(startDate);
       const end = new Date(endDate);
@@ -109,14 +101,15 @@ export function NewPlan() {
       
       const durationStr = `${diffDays}일`;
       const promptGoal = `${title}. ${description}`;
-
+      
       const plan = await generateAIPlan({
         goal: promptGoal,
         duration: durationStr,
         level: levelInput,
         style: styleInput,
         hasWearable: currentUser?.hasWearable || false,
-        executionTime: executionTime // Pass execution time to AI
+        executionStartTime: executionStartTime,
+        executionEndTime: executionEndTime
       });
 
       if (plan) {
@@ -139,544 +132,397 @@ export function NewPlan() {
         const datedGoals = distributeDates(generatedGoals);
         setSubGoals(datedGoals);
         setShowAIModal(false);
-        alert(`AI가 ${datedGoals.length}개의 세부 목표를 생성했습니다! 각 목표에 맞는 인증 방식을 설정해주세요.`);
+        alert(`AI가 ${datedGoals.length}개의 세부 목표를 생성했습니다!`);
       } else {
         setAiError('목표 생성에 실패했습니다.');
       }
-    } catch (err) {
-      setAiError('오류가 발생했습니다. 다시 시도해주세요.');
+    } catch (err: any) {
+      console.error(err);
+      setAiError(`오류가 발생했습니다: ${err.message}`);
     } finally {
       setAiLoading(false);
     }
   };
 
   const handleAddSubGoal = () => {
-      if (subGoals.length >= 100) {
-          alert('중간 목표는 최대 100개까지만 생성 가능합니다.');
-          return;
-      }
-      const newGoal: Partial<SubGoal> = { 
+      setSubGoals([...subGoals, { 
           title: '', 
           description: '', 
-          status: 'pending',
-          startDate: startDate,
-          dueDate: endDate,
-          dueTime: executionTime || '',
-          difficulty: 'MEDIUM',
-          evidenceTypes: ['PHOTO'],
-          evidenceDescription: '',
-          exampleBiometricData: '',
-          exampleLocationMetadata: ''
-      };
-      setSubGoals([...subGoals, newGoal]);
+          dueDate: endDate || startDate,
+          evidenceTypes: ['PHOTO']
+      }]);
   };
 
   const handleRemoveSubGoal = (index: number) => {
-      setConfirmConfig({
-          isOpen: true,
-          title: '목표 삭제',
-          message: '이 중간 목표를 삭제하시겠습니까?',
-          isDangerous: true,
-          onConfirm: () => {
-              setSubGoals(prev => prev.filter((_, i) => i !== index));
-              setConfirmConfig(prev => ({ ...prev, isOpen: false }));
-          }
-      });
+      setSubGoals(subGoals.filter((_, i) => i !== index));
   };
 
-  const handleSubGoalChange = (index: number, field: keyof SubGoal, value: any) => {
-      const newSubGoals = [...subGoals];
-      newSubGoals[index] = { ...newSubGoals[index], [field]: value };
-      setSubGoals(newSubGoals);
+  const handleSubGoalChange = (index: number, field: string, value: any) => {
+      const newGoals = [...subGoals];
+      newGoals[index] = { ...newGoals[index], [field]: value };
+      setSubGoals(newGoals);
   };
 
-  const handleToggleEvidenceType = (index: number, type: string) => {
-      const newSubGoals = [...subGoals];
-      const currentTypes = newSubGoals[index].evidenceTypes || [];
-      
-      if (currentTypes.includes(type as any)) {
-          newSubGoals[index].evidenceTypes = currentTypes.filter(t => t !== type) as any;
-      } else {
-          newSubGoals[index].evidenceTypes = [...currentTypes, type as any];
-      }
-      setSubGoals(newSubGoals);
-  };
-
-  const handleGenerateEvidenceSuggestions = async (index: number) => {
-      const goal = subGoals[index];
-      if (!goal.title) return alert('목표 제목을 먼저 입력해주세요.');
-
+  const handleGenerateOneEvidence = async (index: number) => {
+      const sg = subGoals[index];
+      if (!sg.title) return alert('목표 제목을 입력해주세요.');
       setLoadingEvidence(index);
       try {
-          const timeContext = goal.dueTime || executionTime;
-          const suggestions = await generateAIEvidenceSuggestions(
-              goal.title!, 
-              goal.description || '', 
-              currentUser?.hasWearable || false,
-              timeContext
-          );
-          
-          const newSubGoals = [...subGoals];
-          newSubGoals[index].evidenceOptions = suggestions;
-          setSubGoals(newSubGoals);
-      } catch (e) {
-          alert('증거물 예시 생성 실패');
+          const timeContext = executionStartTime + (executionEndTime ? ` ~ ${executionEndTime}` : '');
+          const suggestions = await generateAIEvidenceSuggestions(sg.title!, sg.description || '', currentUser?.hasWearable || false, timeContext);
+          if (suggestions && suggestions.length > 0) {
+              const best = suggestions[0];
+              const newGoals = [...subGoals];
+              newGoals[index] = {
+                  ...newGoals[index],
+                  evidenceTypes: [best.type],
+                  evidenceDescription: best.description
+              };
+              setSubGoals(newGoals);
+          }
+      } catch (e: any) {
+          alert(`오류가 발생했습니다: ${e.message}`);
       } finally {
           setLoadingEvidence(null);
       }
   };
 
-  const handleSelectEvidenceOption = (index: number, option: EvidenceOption) => {
-      const newSubGoals = [...subGoals];
-      newSubGoals[index] = {
-          ...newSubGoals[index],
-          evidenceTypes: [option.type], 
-          evidenceDescription: option.description,
-          exampleTimeMetadata: option.timeMetadata,
-          exampleBiometricData: option.biometricData,
-          exampleLocationMetadata: option.locationMetadata
-      };
-      setSubGoals(newSubGoals);
-  };
-
-  const handleBulkApplyEvidence = (index: number) => {
-      setConfirmConfig({
-          isOpen: true,
-          title: '일괄 적용',
-          message: '현재 목표의 [인증 방식, 설명, 메타데이터] 설정을\n아래에 있는 모든 목표에 적용하시겠습니까?',
-          onConfirm: () => {
-              setSubGoals(prev => {
-                  const newSubGoals = [...prev];
-                  const sourceGoal = newSubGoals[index];
-                  
-                  if (!sourceGoal) return prev;
-
-                  const sourceEvidenceTypes = sourceGoal.evidenceTypes ? [...sourceGoal.evidenceTypes] : [];
-
-                  for (let i = index + 1; i < newSubGoals.length; i++) {
-                      newSubGoals[i] = {
-                          ...newSubGoals[i],
-                          evidenceTypes: [...sourceEvidenceTypes],
-                          evidenceDescription: sourceGoal.evidenceDescription || '',
-                          exampleTimeMetadata: sourceGoal.exampleTimeMetadata || '',
-                          exampleBiometricData: sourceGoal.exampleBiometricData || '',
-                          exampleLocationMetadata: sourceGoal.exampleLocationMetadata || ''
-                      };
-                  }
-                  return newSubGoals;
-              });
-              setConfirmConfig(prev => ({ ...prev, isOpen: false }));
-              // Small delay to allow render update before alert
-              setTimeout(() => alert('일괄 적용되었습니다.'), 100);
-          }
-      });
-  };
-
-  const moveSubGoal = (index: number, direction: 'up' | 'down') => {
-      if ((direction === 'up' && index === 0) || (direction === 'down' && index === subGoals.length - 1)) return;
-      const newSubGoals = [...subGoals];
-      const targetIndex = direction === 'up' ? index - 1 : index + 1;
-      [newSubGoals[index], newSubGoals[targetIndex]] = [newSubGoals[targetIndex], newSubGoals[index]];
-      setSubGoals(newSubGoals);
-  };
-
-  const handleSavePlan = async () => {
+  const handleSave = async () => {
       if (!currentUser) return alert('로그인이 필요합니다.');
-      if (!title || !category || !startDate || !endDate) return alert('필수 정보를 모두 입력해주세요.');
+      if (!title) return alert('제목을 입력해주세요.');
+      if (!startDate || !endDate) return alert('기간을 설정해주세요.');
+      if (subGoals.length === 0) return alert('최소 1개 이상의 세부 목표가 필요합니다.');
       
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-
-      if (endDate < startDate) return alert('마감일은 시작일보다 이후여야 합니다.');
-      
-      if (diffDays > 90) {
-          return alert('최대 기간은 3개월(90일)입니다. 더 긴 목표는 "파트 2"로 나누어 이어서 계획을 세워주세요.');
-      }
-
-      if (subGoals.length < 3) return alert('중간 목표는 최소 3개 이상이어야 합니다. (FR-077)');
-      if (subGoals.some(sg => !sg.title)) return alert('모든 중간 목표의 제목을 입력해주세요. (FR-076)');
-      if (subGoals.some(sg => !sg.evidenceTypes || sg.evidenceTypes.length === 0)) return alert('모든 중간 목표에 최소 1개 이상의 인증 방식을 선택해주세요.');
-
       setSaving(true);
       try {
           const planData = {
               title,
-              category,
               description,
+              category,
               startDate,
               endDate,
-              executionTime, 
-              subGoals: subGoals.map((sg, idx) => ({ ...sg, id: `sg-${Date.now()}-${idx}` })), 
+              executionTime: executionStartTime,
+              executionEndTime: executionEndTime,
+              subGoals: subGoals.map((sg, idx) => ({
+                  id: `sg-${Date.now()}-${idx}`,
+                  title: sg.title || `목표 ${idx+1}`,
+                  description: sg.description || '',
+                  status: 'pending',
+                  dueDate: sg.dueDate || endDate,
+                  dueTime: executionStartTime,
+                  evidenceTypes: sg.evidenceTypes || ['PHOTO'],
+                  evidenceDescription: sg.evidenceDescription,
+                  startDate: sg.startDate || startDate,
+                  difficulty: sg.difficulty || 'MEDIUM',
+                  evidences: []
+              })),
+              progress: 0,
+              createdAt: new Date().toISOString()
           };
-          
-          await createPlan(currentUser.id, planData);
-          alert(`"${title}" 계획이 생성되었습니다! 🎉`);
-          navigate('/');
-      } catch (error) {
-          console.error(error);
-          alert('계획 저장 중 오류가 발생했습니다.');
+
+          const planId = await createPlan(currentUser.id, planData);
+          navigate(`/plan/${planId}`);
+      } catch (e) {
+          console.error(e);
+          alert('계획 생성 중 오류가 발생했습니다.');
       } finally {
           setSaving(false);
       }
   };
 
-  const evidenceTypesList = [
-      { id: 'PHOTO', label: '📸 사진' },
-      { id: 'VIDEO', label: '🎥 영상' },
-      { id: 'TEXT', label: '✍️ 텍스트' },
-      { id: 'APP_CAPTURE', label: '📱 캡처' },
-      { id: 'BIOMETRIC', label: '⌚️ 생체' },
-      { id: 'EMAIL', label: '📧 이메일' },
-      { id: 'API', label: '🔗 API' },
-  ];
-
   return (
-    <div className="max-w-3xl mx-auto pb-20 animate-fade-in">
-       <div className="mb-8 text-center sm:text-left">
-         <h1 className="text-2xl font-bold text-gray-900">새 계획 만들기</h1>
-         <p className="text-gray-500 mt-1">목표를 설정하고 세부 실천 계획을 세워보세요.</p>
-       </div>
+    <div className="max-w-2xl mx-auto pb-20 animate-fade-in">
+        {/* Simple Header */}
+        <div className="mb-8">
+            <h1 className="text-2xl font-bold text-gray-900">새 계획 만들기</h1>
+            <p className="text-gray-500 mt-1">목표를 설정하고 세부 실천 계획을 세워보세요.</p>
+        </div>
 
-       <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 sm:p-8 relative">
-         <div className="space-y-6">
-            <Input 
-                label="계획 제목" 
-                value={title} 
-                onChange={(e) => setTitle(e.target.value)} 
-                placeholder="예: 30일 만에 파이썬 기초 끝내기" 
-            />
-            
+        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 sm:p-8 space-y-6">
+            {/* Title */}
             <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1.5">카테고리</label>
+                <label className="block text-xs font-bold text-gray-500 mb-1.5">계획 제목</label>
+                <input 
+                    type="text" 
+                    className="w-full rounded-xl border-gray-300 p-3 text-sm focus:ring-primary-500 focus:border-primary-500 border placeholder-gray-300"
+                    placeholder="예: 30일 만에 파이썬 기초 끝내기"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                />
+            </div>
+
+            {/* Category */}
+            <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1.5">카테고리</label>
                 <select 
-                    value={category} 
-                    onChange={(e) => setCategory(e.target.value)} 
-                    className="w-full p-2.5 rounded-xl border border-gray-300 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white"
+                    className="w-full rounded-xl border-gray-300 p-3 text-sm focus:ring-primary-500 focus:border-primary-500 bg-white border"
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
                 >
                     {categories.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
             </div>
 
+            {/* Dates */}
             <div className="grid grid-cols-2 gap-4">
-                <Input 
-                    type="date" 
-                    label="시작일" 
-                    value={startDate} 
-                    onChange={(e) => setStartDate(e.target.value)} 
-                />
-                <div className="relative">
-                    <Input 
-                        type="date" 
-                        label="마감일" 
-                        value={endDate} 
-                        onChange={(e) => setEndDate(e.target.value)} 
-                        min={startDate}
-                        max={getMaxEndDate()} 
-                    />
-                    <div className="text-[10px] text-gray-400 mt-1 text-right">최대 3개월까지 설정 가능</div>
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 mb-1.5">시작일</label>
+                    <div className="relative">
+                        <input 
+                            type="date" 
+                            className="w-full rounded-xl border-gray-300 p-3 text-sm focus:ring-primary-500 focus:border-primary-500 border"
+                            value={startDate}
+                            onChange={(e) => setStartDate(e.target.value)}
+                            min={new Date().toISOString().split('T')[0]}
+                        />
+                    </div>
+                </div>
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 mb-1.5">마감일</label>
+                    <div className="relative">
+                        <input 
+                            type="date" 
+                            className="w-full rounded-xl border-gray-300 p-3 text-sm focus:ring-primary-500 focus:border-primary-500 border"
+                            value={endDate}
+                            onChange={(e) => setEndDate(e.target.value)}
+                            min={startDate}
+                            max={getMaxEndDate()}
+                        />
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-1 text-right">최대 3개월(6개월)까지 설정 가능</p>
                 </div>
             </div>
 
+            {/* Time */}
             <div>
-                <Input 
-                    type="time" 
-                    label="주로 실천할 시간 (선택)" 
-                    value={executionTime} 
-                    onChange={(e) => setExecutionTime(e.target.value)}
-                    icon={<Clock className="w-5 h-5" />}
-                    placeholder="매일 언제 실천할까요?"
+                <label className="block text-xs font-bold text-gray-500 mb-1.5">주로 실천할 시간 (선택)</label>
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="relative">
+                        <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input 
+                            type="time" 
+                            className="w-full rounded-xl border-gray-300 pl-10 p-3 text-sm focus:ring-primary-500 focus:border-primary-500 border"
+                            value={executionStartTime}
+                            onChange={(e) => setExecutionStartTime(e.target.value)}
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">부터</span>
+                    </div>
+                    <div className="relative">
+                        <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input 
+                            type="time" 
+                            className="w-full rounded-xl border-gray-300 pl-10 p-3 text-sm focus:ring-primary-500 focus:border-primary-500 border"
+                            value={executionEndTime}
+                            onChange={(e) => setExecutionEndTime(e.target.value)}
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">까지</span>
+                    </div>
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1">설정한 시간에 알림을 보내드립니다.</p>
+            </div>
+
+            {/* Description */}
+            <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1.5">설명</label>
+                <textarea 
+                    className="w-full rounded-xl border-gray-300 p-3 text-sm focus:ring-primary-500 focus:border-primary-500 min-h-[100px] resize-none border placeholder-gray-300"
+                    placeholder="이 계획을 통해 이루고 싶은 목표나 다짐을 적어주세요."
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
                 />
-                <p className="text-[10px] text-gray-400 mt-1 pl-1">설정한 시간에 알림을 보내드립니다.</p>
             </div>
 
-            <div>
-               <label className="block text-xs font-bold text-gray-700 mb-1.5">설명</label>
-               <textarea 
-                    value={description} 
-                    onChange={(e) => setDescription(e.target.value)} 
-                    rows={3} 
-                    className="w-full p-3 rounded-xl border border-gray-300 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none" 
-                    placeholder="이 계획을 통해 이루고 싶은 목표나 다짐을 적어주세요." 
-               />
-            </div>
+            {/* Sub-Goals Section */}
+            <div className="pt-4 border-t border-gray-50">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold text-gray-900 flex items-center gap-2 text-sm">
+                        <AlignLeft className="w-4 h-4" /> 세부 목표 설정 ({subGoals.length})
+                    </h3>
+                    <div className="flex gap-2">
+                        <button 
+                            onClick={handleOpenAIModal}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-50 text-violet-600 rounded-lg text-xs font-bold hover:bg-violet-100 transition-colors"
+                        >
+                            <Sparkles className="w-3.5 h-3.5" /> AI 자동 생성
+                        </button>
+                        <button 
+                            onClick={handleAddSubGoal}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-bold hover:bg-gray-200 transition-colors"
+                        >
+                            <Plus className="w-3.5 h-3.5" /> 직접 추가
+                        </button>
+                    </div>
+                </div>
 
-            <div className="border-t border-gray-100 pt-6 mt-6">
-               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
-                  <label className="text-sm font-bold text-gray-900 flex items-center gap-1">
-                      <AlignLeft className="w-4 h-4" /> 세부 목표 설정 ({subGoals.length})
-                  </label>
-                  <div className="flex gap-2 w-full sm:w-auto">
-                      <button 
-                        onClick={handleOpenAIModal}
-                        className="flex-1 sm:flex-none text-xs bg-indigo-50 text-indigo-700 border border-indigo-100 font-bold px-3 py-2 rounded-lg hover:bg-indigo-100 transition-colors flex items-center justify-center gap-1.5"
-                      >
-                          <Sparkles className="w-3.5 h-3.5" /> AI 자동 생성
-                      </button>
-                      <button 
-                        onClick={handleAddSubGoal} 
-                        disabled={subGoals.length >= 100}
-                        className="flex-1 sm:flex-none text-xs bg-gray-100 text-gray-700 border border-gray-200 font-bold px-3 py-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center gap-1 disabled:opacity-50"
-                      >
-                          <Plus className="w-3.5 h-3.5" /> 직접 추가
-                      </button>
-                  </div>
-               </div>
-               
-               <div className="space-y-4">
-                  {subGoals.map((sg, idx) => (
-                     <div key={idx} className="bg-gray-50 rounded-xl border border-gray-200 overflow-hidden transition-all hover:shadow-md hover:border-primary-200 group">
-                        {/* Header Row */}
-                        <div className="bg-gray-100/50 p-3 flex items-center gap-3 border-b border-gray-200">
-                            <span className="w-6 h-6 rounded-full bg-white border border-gray-300 flex items-center justify-center text-xs font-bold text-gray-500">
-                                {idx + 1}
-                            </span>
-                            <input 
-                                className="flex-1 bg-transparent border-none p-0 text-sm font-bold placeholder-gray-400 focus:ring-0" 
-                                placeholder="목표 제목 입력 (필수)" 
-                                value={sg.title || ''} 
-                                onChange={(e) => handleSubGoalChange(idx, 'title', e.target.value)}
-                            />
-                            <div className="flex items-center gap-1 opacity-50 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => moveSubGoal(idx, 'up')} disabled={idx === 0} className="p-1 hover:bg-gray-200 rounded disabled:opacity-30"><ArrowUp className="w-3.5 h-3.5" /></button>
-                                <button onClick={() => moveSubGoal(idx, 'down')} disabled={idx === subGoals.length - 1} className="p-1 hover:bg-gray-200 rounded disabled:opacity-30"><ArrowDown className="w-3.5 h-3.5" /></button>
-                                <button onClick={() => handleRemoveSubGoal(idx)} disabled={subGoals.length <= 3} className="p-1 hover:bg-red-100 hover:text-red-500 rounded ml-1 disabled:opacity-30"><Trash2 className="w-3.5 h-3.5" /></button>
-                            </div>
-                        </div>
-                        
-                        {/* Body */}
-                        <div className="p-4 space-y-4">
-                            <input 
-                                className="w-full bg-transparent border-b border-gray-200 p-0 pb-2 text-xs text-gray-600 placeholder-gray-400 focus:ring-0 focus:border-primary-500" 
-                                placeholder="상세 설명 (선택)" 
-                                value={sg.description || ''} 
-                                onChange={(e) => handleSubGoalChange(idx, 'description', e.target.value)}
-                            />
-                            
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="text-[10px] font-bold text-gray-500 mb-1 block">기간</label>
-                                    <div className="flex flex-col gap-1 text-xs">
-                                        <div className="flex items-center gap-1">
-                                            <span className="text-[9px] text-gray-400 w-6">시작</span>
-                                            <input type="date" value={sg.startDate || ''} onChange={(e) => handleSubGoalChange(idx, 'startDate', e.target.value)} className="flex-1 bg-white border border-gray-300 rounded p-1" />
-                                        </div>
-                                        <div className="flex items-center gap-1">
-                                            <span className="text-[9px] text-gray-400 w-6">마감</span>
-                                            <input type="date" value={sg.dueDate || ''} onChange={(e) => handleSubGoalChange(idx, 'dueDate', e.target.value)} className="flex-1 bg-white border border-gray-300 rounded p-1" />
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="space-y-2">
-                                    <div>
-                                        <label className="text-[10px] font-bold text-gray-500 mb-1 block">마감 시간</label>
-                                        <input 
-                                            type="time" 
-                                            value={sg.dueTime || ''} 
-                                            onChange={(e) => handleSubGoalChange(idx, 'dueTime', e.target.value)} 
-                                            className="w-full bg-white border border-gray-300 rounded p-1 text-xs" 
-                                        />
-                                    </div>
-                                </div>
-                            </div>
+                {subGoals.length === 0 ? (
+                    <div className="border-2 border-dashed border-gray-200 rounded-xl py-12 flex flex-col items-center justify-center text-center bg-gray-50/50">
+                        <Target className="w-10 h-10 text-gray-300 mb-3 opacity-50" />
+                        <p className="text-gray-400 text-sm font-medium">세부 목표가 없습니다.</p>
+                        <p className="text-gray-400 text-xs mt-1 opacity-70">'AI 자동 생성' 또는 '직접 추가'를 이용해보세요.</p>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {subGoals.map((sg, idx) => (
+                            <div key={idx} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm relative group hover:border-primary-300 transition-colors">
+                                <button 
+                                    onClick={() => handleRemoveSubGoal(idx)}
+                                    className="absolute top-4 right-4 text-gray-300 hover:text-red-500 transition-colors p-1"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
 
-                            <div className="bg-white p-3 rounded-xl border border-gray-100">
-                                <div className="flex items-center justify-between mb-3">
-                                    <div className="text-[10px] font-bold text-indigo-500 flex items-center gap-1">
-                                        <MousePointerClick className="w-3 h-3" /> 인증 방식 설정
-                                    </div>
-                                    <button 
-                                        onClick={() => handleGenerateEvidenceSuggestions(idx)}
-                                        className="text-[10px] text-indigo-600 font-bold hover:underline flex items-center gap-1"
-                                        disabled={loadingEvidence === idx}
-                                    >
-                                        <Sparkles className="w-3 h-3" /> {loadingEvidence === idx ? '분석 중...' : 'AI 예시 받기'}
-                                    </button>
-                                </div>
-                                
-                                {sg.evidenceOptions && sg.evidenceOptions.length > 0 && (
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
-                                        {sg.evidenceOptions.map((opt, optIdx) => (
-                                            <div 
-                                                key={optIdx} 
-                                                onClick={() => handleSelectEvidenceOption(idx, opt)}
-                                                className="p-2 rounded-lg border text-xs cursor-pointer transition-all hover:shadow-sm bg-indigo-50 border-indigo-200"
-                                            >
-                                                <div className="font-bold mb-1 flex items-center gap-1">
-                                                    {opt.type === 'PHOTO' && '📸 사진'}
-                                                    {opt.type === 'VIDEO' && '🎥 영상'}
-                                                    {opt.type === 'TEXT' && '✍️ 텍스트'}
-                                                    {opt.type === 'APP_CAPTURE' && '📱 캡처'}
-                                                    {opt.type === 'BIOMETRIC' && '⌚️ 생체'}
-                                                    {opt.type === 'EMAIL' && '📧 이메일'}
-                                                    {opt.type === 'API' && '🔗 API'}
-                                                </div>
-                                                <p className="text-gray-600 line-clamp-2 leading-tight">{opt.description}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-
-                                <div className="space-y-3">
-                                    {/* Multiple Selection Toggle Buttons */}
-                                    <div>
-                                        <div className="flex justify-between items-center mb-1.5">
-                                            <label className="text-[10px] font-bold text-gray-500">허용할 인증 수단 (다중 선택)</label>
-                                            {/* Bulk Apply Button */}
-                                            {idx < subGoals.length - 1 && (
-                                                <button 
-                                                    type="button"
-                                                    onClick={(e) => {
-                                                        e.preventDefault();
-                                                        handleBulkApplyEvidence(idx);
-                                                    }}
-                                                    className="text-[10px] text-gray-500 hover:text-indigo-600 hover:bg-gray-100 px-2 py-1 rounded flex items-center gap-1 transition-colors border border-transparent hover:border-gray-200"
-                                                    title="이 설정(방식,설명,메타데이터)을 남은 모든 목표에 복사합니다"
-                                                >
-                                                    <Layers className="w-3 h-3" /> 나머지 일괄 적용
-                                                </button>
-                                            )}
-                                        </div>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {evidenceTypesList.map(type => {
-                                                const isSelected = sg.evidenceTypes?.includes(type.id as any);
-                                                return (
-                                                    <button
-                                                        key={type.id}
-                                                        onClick={() => handleToggleEvidenceType(idx, type.id)}
-                                                        className={`px-2 py-1 rounded text-[10px] font-bold border transition-all ${
-                                                            isSelected 
-                                                            ? 'bg-gray-800 text-white border-gray-800' 
-                                                            : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
-                                                        }`}
-                                                    >
-                                                        {type.label}
-                                                    </button>
-                                                )
-                                            })}
-                                        </div>
-                                    </div>
-
+                                <div className="flex items-center gap-3 mb-3 pr-8">
+                                    <span className="w-6 h-6 rounded-full bg-primary-50 text-primary-600 flex items-center justify-center text-xs font-bold shrink-0">
+                                        {idx + 1}
+                                    </span>
                                     <input 
-                                        className="w-full bg-white border border-gray-300 rounded p-2 text-xs placeholder-gray-400"
-                                        placeholder="구체적인 인증 방법을 입력하세요 (예: 운동 완료 화면 캡처)"
-                                        value={sg.evidenceDescription || ''}
-                                        onChange={(e) => handleSubGoalChange(idx, 'evidenceDescription', e.target.value)}
+                                        type="text" 
+                                        placeholder="세부 목표 제목" 
+                                        className="flex-1 font-bold text-gray-900 border-none focus:ring-0 p-0 placeholder-gray-300 text-sm bg-transparent"
+                                        value={sg.title}
+                                        onChange={(e) => handleSubGoalChange(idx, 'title', e.target.value)}
+                                    />
+                                </div>
+
+                                <div className="pl-9 space-y-3">
+                                    <textarea 
+                                        placeholder="구체적인 실천 내용" 
+                                        className="w-full text-xs border-gray-200 rounded-lg p-2 focus:border-primary-500 focus:ring-primary-500 resize-none h-16 bg-gray-50 border"
+                                        value={sg.description}
+                                        onChange={(e) => handleSubGoalChange(idx, 'description', e.target.value)}
                                     />
                                     
-                                    <div className="flex items-center gap-2 text-xs text-blue-600 bg-blue-50 p-2 rounded-lg border border-blue-100">
-                                        <MapPin className="w-3.5 h-3.5" />
-                                        <span className="font-bold whitespace-nowrap">장소(GPS):</span>
-                                        <input
-                                            className="flex-1 bg-transparent border-b border-blue-200 focus:border-blue-500 outline-none px-1 text-blue-800 placeholder-blue-300"
-                                            placeholder="예: 헬스장, 도서관 (선택)"
-                                            value={sg.exampleLocationMetadata || ''}
-                                            onChange={(e) => handleSubGoalChange(idx, 'exampleLocationMetadata', e.target.value)}
-                                        />
-                                    </div>
-
-                                    {/* Show Biometric Input if user has wearable OR if BIOMETRIC is selected */}
-                                    {(currentUser?.hasWearable || sg.evidenceTypes?.includes('BIOMETRIC')) && (
-                                        <div className="flex items-center gap-2 text-xs text-green-600 bg-green-50 p-2 rounded-lg border border-green-100">
-                                            <Activity className="w-3.5 h-3.5" />
-                                            <span className="font-bold whitespace-nowrap">생체 데이터 목표:</span>
-                                            <input
-                                                className="flex-1 bg-transparent border-b border-green-200 focus:border-green-500 outline-none px-1 text-green-800 placeholder-green-300"
-                                                placeholder="예: 심박수 120bpm 이상, 5000보 달성"
-                                                value={sg.exampleBiometricData || ''}
-                                                onChange={(e) => handleSubGoalChange(idx, 'exampleBiometricData', e.target.value)}
+                                    <div className="flex flex-wrap gap-2">
+                                        <div className="flex-1 min-w-[120px]">
+                                            <input 
+                                                type="date" 
+                                                className="w-full text-xs border-gray-200 rounded-lg p-2 border"
+                                                value={sg.dueDate}
+                                                onChange={(e) => handleSubGoalChange(idx, 'dueDate', e.target.value)}
                                             />
+                                        </div>
+                                        <div className="flex-1 min-w-[120px]">
+                                            <select 
+                                                className="w-full text-xs border-gray-200 rounded-lg p-2 border bg-white"
+                                                value={sg.evidenceTypes?.[0] || 'PHOTO'}
+                                                onChange={(e) => handleSubGoalChange(idx, 'evidenceTypes', [e.target.value])}
+                                            >
+                                                <option value="PHOTO">📸 사진 촬영</option>
+                                                <option value="VIDEO">🎥 영상 녹화</option>
+                                                <option value="TEXT">📝 텍스트 기록</option>
+                                                <option value="BIOMETRIC">⌚️ 워치 데이터</option>
+                                                <option value="EMAIL">📧 이메일 인증</option>
+                                                <option value="API">🔗 자격증 연동</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    
+                                    {sg.title && (
+                                        <div className="flex justify-end">
+                                            <button 
+                                                onClick={() => handleGenerateOneEvidence(idx)}
+                                                className="text-[10px] text-primary-600 flex items-center gap-1 hover:underline disabled:opacity-50"
+                                                disabled={loadingEvidence === idx}
+                                            >
+                                                {loadingEvidence === idx ? '생성 중...' : <><Sparkles className="w-3 h-3" /> AI 추천 인증법</>}
+                                            </button>
                                         </div>
                                     )}
                                 </div>
                             </div>
-                        </div>
-                     </div>
-                  ))}
-                  
-                  {subGoals.length === 0 && (
-                     <div className="text-center py-10 border-2 border-dashed border-gray-200 rounded-xl text-gray-400 text-sm bg-gray-50/50">
-                        <Target className="w-10 h-10 mx-auto mb-3 opacity-20" />
-                        <p>세부 목표가 없습니다.<br/>'AI 자동 생성' 또는 '직접 추가'를 이용해보세요.</p>
-                     </div>
-                  )}
-               </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
-            <div className="pt-6 border-t border-gray-100 flex gap-3">
-               <Button variant="secondary" fullWidth onClick={() => navigate(-1)} disabled={saving}>취소</Button>
-               <Button fullWidth onClick={handleSavePlan} disabled={saving} className="flex items-center gap-2 justify-center">
-                   {saving ? '저장 중...' : <><Save className="w-4 h-4" /> 계획 생성 완료</>}
-               </Button>
-            </div>
-         </div>
-       </div>
-
-       {showAIModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-fade-in" onClick={() => !aiLoading && setShowAIModal(false)}>
-            <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl relative" onClick={e => e.stopPropagation()}>
-                {/* AI Modal Content */}
-                <button 
-                    onClick={() => setShowAIModal(false)}
-                    disabled={aiLoading} 
-                    className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+            {/* Footer Buttons */}
+            <div className="pt-4 flex gap-3">
+                <Button 
+                    variant="secondary" 
+                    fullWidth 
+                    onClick={() => navigate(-1)} 
+                    disabled={saving}
+                    className="bg-gray-100 py-3 rounded-xl hover:bg-gray-200"
                 >
-                    <X className="w-5 h-5" />
-                </button>
+                    취소
+                </Button>
+                <Button 
+                    fullWidth 
+                    onClick={handleSave} 
+                    disabled={saving}
+                    className="py-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white shadow-lg shadow-primary-200"
+                >
+                    {saving ? '저장 중...' : <><Target className="w-4 h-4 mr-2" /> 계획 생성 완료</>}
+                </Button>
+            </div>
+        </div>
 
-                <div className="mb-6">
-                    <h2 className="text-xl font-bold flex items-center gap-2 text-indigo-900">
-                        <Sparkles className="w-5 h-5 text-indigo-500" /> AI 세부 목표 생성
-                    </h2>
-                    <p className="text-sm text-gray-500 mt-1">입력하신 제목과 기간을 바탕으로<br/>최적의 로드맵을 설계해드립니다.</p>
-                </div>
-
-                <div className="space-y-5">
-                    {/* Analysis Target Summary */}
-                    <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-100">
-                        <div className="text-xs text-indigo-500 font-bold mb-1">분석 대상</div>
-                        <div className="text-sm font-bold text-indigo-900 truncate">{title}</div>
-                        <div className="text-xs text-indigo-700 mt-0.5">{startDate} ~ {endDate}</div>
-                        {executionTime && <div className="text-xs text-indigo-700 mt-0.5">매일 {executionTime} 실천</div>}
+        {/* AI Modal */}
+        {showAIModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-fade-in" onClick={() => !aiLoading && setShowAIModal(false)}>
+                <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl relative" onClick={e => e.stopPropagation()}>
+                    <button onClick={() => setShowAIModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600" disabled={aiLoading}><X className="w-5 h-5" /></button>
+                    
+                    <div className="text-center mb-6">
+                        <div className="w-12 h-12 bg-violet-100 rounded-full flex items-center justify-center mx-auto mb-3 text-violet-600">
+                            <Wand2 className="w-6 h-6" />
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-900">AI 플랜 생성</h3>
+                        <p className="text-sm text-gray-500">입력하신 정보를 바탕으로 루틴을 제안합니다.</p>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-4 mb-6">
                         <div>
-                            <label className="block text-xs font-bold text-gray-700 mb-1.5">난이도</label>
-                            <select value={levelInput} onChange={(e) => setLevelInput(e.target.value)} className="w-full p-2 rounded-lg border border-gray-300 text-sm">
-                                <option value="초급">초급</option>
-                                <option value="중급">중급</option>
-                                <option value="고급">고급</option>
-                            </select>
+                            <label className="block text-xs font-bold text-gray-500 mb-1.5">난이도</label>
+                            <div className="flex gap-2">
+                                {['초급', '중급', '고급'].map(l => (
+                                    <button 
+                                        key={l}
+                                        onClick={() => setLevelInput(l)}
+                                        className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-all ${levelInput === l ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-500'}`}
+                                    >
+                                        {l}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                         <div>
-                            <label className="block text-xs font-bold text-gray-700 mb-1.5">스타일</label>
-                            <select value={styleInput} onChange={(e) => setStyleInput(e.target.value)} className="w-full p-2 rounded-lg border border-gray-300 text-sm">
-                                <option value="꾸준하게">꾸준하게</option>
-                                <option value="집중적으로">집중적으로</option>
-                                <option value="유동적으로">유동적으로</option>
-                            </select>
+                            <label className="block text-xs font-bold text-gray-500 mb-1.5">스타일</label>
+                            <div className="flex gap-2">
+                                {['꾸준하게', '단기간 집중', '여유롭게'].map(s => (
+                                    <button 
+                                        key={s}
+                                        onClick={() => setStyleInput(s)}
+                                        className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-all ${styleInput === s ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-500'}`}
+                                    >
+                                        {s}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     </div>
 
-                    {aiError && <div className="p-3 bg-red-50 text-red-600 rounded-lg text-xs flex items-center gap-2"><AlertCircle className="w-4 h-4" /> {aiError}</div>}
+                    {aiError && (
+                        <div className="mb-4 p-3 bg-red-50 text-red-600 text-xs rounded-xl flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4" /> {aiError}
+                        </div>
+                    )}
 
-                    <Button fullWidth onClick={handleAiGenerateSubGoals} disabled={aiLoading} className="bg-indigo-600 hover:bg-indigo-700 border-none text-white py-3 shadow-lg shadow-indigo-200">
-                        {aiLoading ? 'AI가 로드맵을 설계 중...' : '세부 목표 생성하기'}
+                    <Button fullWidth onClick={handleAiGenerateSubGoals} disabled={aiLoading} className="bg-violet-600 hover:bg-violet-700 text-white">
+                        {aiLoading ? '생성 중...' : '플랜 생성 시작'}
                     </Button>
                 </div>
             </div>
-        </div>
-       )}
+        )}
 
-       <ConfirmDialog 
-           isOpen={confirmConfig.isOpen}
-           title={confirmConfig.title}
-           message={confirmConfig.message}
-           onConfirm={confirmConfig.onConfirm}
-           onCancel={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
-           isDangerous={confirmConfig.isDangerous}
-       />
+        <ConfirmDialog 
+            isOpen={confirmConfig.isOpen}
+            title={confirmConfig.title}
+            message={confirmConfig.message}
+            onConfirm={confirmConfig.onConfirm}
+            onCancel={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+            isDangerous={confirmConfig.isDangerous}
+        />
     </div>
   );
 }

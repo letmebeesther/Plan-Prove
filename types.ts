@@ -25,6 +25,7 @@ export interface Evidence {
   status: 'APPROVED' | 'WARNING' | 'PENDING' | 'REJECTED'; // FR-053 (AI Status)
   createdAt: string;
   feedback?: string; // AI Feedback
+  credibilityScore?: number; // 신빙성 점수 (0-100)
   
   // Specific fields for new types
   verifiedEmail?: string; // For EMAIL type
@@ -76,7 +77,8 @@ export interface Plan {
   progress: number;
   startDate: string;
   endDate: string;
-  executionTime?: string; // New: Preferred daily time for the plan
+  executionTime?: string; // Preferred daily Start time
+  executionEndTime?: string; // Preferred daily End time
   subGoals: SubGoal[];
   author: User;
   authorId?: string; // Added for explicit linking

@@ -6,6 +6,7 @@ import { Plan, Challenge, Certification } from '../types';
 import { Avatar } from '../components/Avatar';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchMyActivePlans, fetchChallenges, fetchHallOfFame, fetchPopularFeeds, fetchHomeFeed, HomeFeedItem, fetchPublicPlans } from '../services/dbService';
+import { ProgressBar } from '../components/common/ProgressBar';
 
 // Mock Data for UI parts not connected to DB yet
 const banners = [
@@ -338,28 +339,30 @@ export function Home() {
              </div>
           ) : activePlans.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {activePlans.map(plan => (
-                    <div key={plan.id} className="bg-white rounded-2xl p-6 shadow-[0_2px_8px_0_rgba(0,0,0,0.04)] hover:shadow-[0_8px_16px_0_rgba(0,0,0,0.08)] transition-all border border-gray-100 cursor-pointer group flex flex-col h-full" onClick={() => navigate(`/plan/${plan.id}`)}>
-                        <div className="flex justify-between items-start mb-4">
-                            <span className="px-2.5 py-1 bg-blue-50 text-blue-600 text-xs font-semibold rounded-lg group-hover:bg-blue-100 transition-colors">{plan.category}</span>
-                            <div className="flex items-center gap-1 text-primary-600 font-bold text-sm">
-                                <span>{plan.progress}%</span>
+                {activePlans.map(plan => {
+                    return (
+                        <div key={plan.id} className="bg-white rounded-2xl p-6 shadow-[0_2px_8px_0_rgba(0,0,0,0.04)] hover:shadow-[0_8px_16px_0_rgba(0,0,0,0.08)] transition-all border border-gray-100 cursor-pointer group flex flex-col h-full relative overflow-hidden" onClick={() => navigate(`/plan/${plan.id}`)}>
+                            <div className="flex justify-between items-start mb-4 relative z-10">
+                                <span className="px-2.5 py-1 bg-blue-50 text-blue-600 text-xs font-semibold rounded-lg group-hover:bg-blue-100 transition-colors">{plan.category}</span>
+                                <div className="flex items-center gap-1 text-primary-600 font-bold text-sm">
+                                    <span>{plan.progress || 0}%</span>
+                                </div>
+                            </div>
+                            <h3 className="font-bold text-gray-900 mb-2 truncate text-lg relative z-10">{plan.title}</h3>
+                            <p className="text-sm text-gray-500 line-clamp-2 mb-6 leading-relaxed flex-grow relative z-10">{plan.description}</p>
+                            
+                            <div className="relative z-10 mb-4">
+                                <ProgressBar progress={plan.progress || 0} className="h-2.5" />
+                            </div>
+                            
+                            <div className="flex items-center justify-between text-xs text-gray-400 font-medium mt-auto relative z-10">
+                                <span className="flex items-center gap-1">
+                                    <CheckCircle2 className="w-3.5 h-3.5" /> 종료일 {plan.endDate}
+                                </span>
                             </div>
                         </div>
-                        <h3 className="font-bold text-gray-900 mb-2 truncate text-lg">{plan.title}</h3>
-                        <p className="text-sm text-gray-500 line-clamp-2 mb-6 leading-relaxed flex-grow">{plan.description}</p>
-                        
-                        <div className="w-full bg-gray-100 rounded-full h-2.5 mb-4 overflow-hidden">
-                            <div className="bg-gradient-to-r from-primary-400 to-primary-600 h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${plan.progress}%` }}></div>
-                        </div>
-                        
-                        <div className="flex items-center justify-between text-xs text-gray-400 font-medium mt-auto">
-                            <span className="flex items-center gap-1">
-                                <CheckCircle2 className="w-3.5 h-3.5" /> 종료일 {plan.endDate}
-                            </span>
-                        </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
           ) : (
             <div className="text-center py-12 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
@@ -480,7 +483,7 @@ export function Home() {
                                 <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
                                     <span className="flex items-center gap-1 text-red-500 font-bold"><Heart className="w-3 h-3 fill-current" /> {plan.likes || 0}</span>
                                     <span className="text-gray-300">|</span>
-                                    <span>진행률 {plan.progress}%</span>
+                                    <span>진행률 {plan.progress || 0}%</span>
                                 </div>
                             </div>
 

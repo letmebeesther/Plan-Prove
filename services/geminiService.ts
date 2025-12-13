@@ -11,7 +11,8 @@ export interface AIPlanRequest {
   level: string; 
   style: string; 
   hasWearable?: boolean; 
-  executionTime?: string; 
+  executionStartTime?: string; 
+  executionEndTime?: string;
 }
 
 export interface AIPlanResponse {
@@ -53,13 +54,17 @@ export const generateAIPlan = async (request: AIPlanRequest): Promise<AIPlanResp
 
   const modelId = "gemini-2.5-flash";
   
+  const timeRange = request.executionStartTime 
+    ? (request.executionEndTime ? `${request.executionStartTime} ~ ${request.executionEndTime}` : request.executionStartTime)
+    : 'Flexible (User did not specify)';
+
   const prompt = `
     Create a detailed goal achievement plan based on the following user input:
     - Goal: ${request.goal}
     - Duration: ${request.duration}
     - Difficulty Level: ${request.level}
     - Execution Style: ${request.style}
-    - **Preferred Execution Time**: ${request.executionTime ? request.executionTime : 'Flexible'}
+    - **Preferred Execution Time**: ${timeRange}
     - User has Wearable Device: ${request.hasWearable ? 'YES' : 'NO'}
 
     **CRITICAL INSTRUCTIONS FOR SUB-GOAL GENERATION:**
@@ -67,18 +72,26 @@ export const generateAIPlan = async (request: AIPlanRequest): Promise<AIPlanResp
        - If "Every day" or similar is implied, generate a sub-goal for **EACH day** or logical checkpoints (e.g. Day 1, Day 2... up to 30).
        - If a specific time is mentioned (e.g. "10pm"), enforce it in the 'Time Metadata'.
     
-    2. **Execution Time Enforcement**: If 'Preferred Execution Time' is provided (e.g., "07:00"), every generated sub-goal MUST explicitly mention this time in its description or metadata (e.g., "Run at 07:00").
+    2. **Execution Time Enforcement**: 
+       - If 'Preferred Execution Time' is provided (e.g., "07:00"), generated sub-goals MUST explicitly mention this time/range in description or metadata.
+       - If 'Preferred Execution Time' is "Flexible", suggest a logical time of day based on the activity type (e.g. "Morning" for running, "Evening" for study) or leave it open if appropriate.
 
     3. **Sub-Goal Count**: You may generate up to **30 sub-goals** if the plan is a daily routine (e.g. "30-Day Challenge"). Otherwise, default to 3-10 milestones.
+
+    4. **FINAL GOAL MANDATORY**: The LAST sub-goal in the list MUST be the ultimate achievement or completion of the main goal (e.g., "Pass the Final Exam", "Receive Job Offer", "Complete 30-Day Course").
+       - **Verification Logic for Final Goal**:
+         - If the goal is related to **Certificates, Licenses, or Language Exams** (e.g., TOEIC, Engineer Cert), suggest **'API'** as the primary evidence type.
+         - If the goal is related to **School Admission or Company Employment**, suggest **'EMAIL'** as the primary evidence type.
+         - Otherwise, use PHOTO or TEXT.
 
     Please provide a structured plan with a catchy title, a short motivating description, a suitable category, and the list of sub-goals.
     
     For each sub-goal, include:
     1. A recommended difficulty level (EASY, MEDIUM, HARD).
     2. **Evidence Options**: Provide 3 distinct ways the user can prove they completed this goal. Each option should have:
-       - Type: PHOTO, VIDEO, TEXT, APP_CAPTURE, BIOMETRIC, EMAIL, API.
+       - Type: PHOTO, VIDEO, TEXT, BIOMETRIC, EMAIL, API. (Do not use APP_CAPTURE).
        - Description: Specific instruction.
-       - Time Metadata: Recommended time logic (e.g. "${request.executionTime || 'Anytime'}").
+       - Time Metadata: Recommended time logic (e.g. "${timeRange}" or "Any time").
        - Biometric Data: ${request.hasWearable ? 'Include specific target health data (e.g. "Heart Rate > 120") if relevant.' : 'Leave empty.'}
        - Location Metadata: Include a recommended location if applicable.
     
@@ -208,10 +221,11 @@ export const generateAIEvidenceSuggestions = async (
     - Specific Execution Time: ${timeContext || 'Flexible/None'}
 
     For each option, provide:
-    1. Type: Choose one from [PHOTO, VIDEO, TEXT, APP_CAPTURE, BIOMETRIC, EMAIL, API].
+    1. Type: Choose one from [PHOTO, VIDEO, TEXT, BIOMETRIC, EMAIL, API].
+       - Do NOT use APP_CAPTURE.
        - Use 'BIOMETRIC' only if user has wearable and it involves health data.
-       - Use 'EMAIL' for official acceptances.
-       - Use 'API' for official scores.
+       - Use 'EMAIL' for official acceptances (School, Company).
+       - Use 'API' for official certificates/licenses (Q-Net, TOEIC).
     2. Description: Specific instruction.
     3. Metadata:
        - timeMetadata: recommended time (e.g. ${timeContext || 'N/A'}).

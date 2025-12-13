@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutTemplate, Search, Filter, Calendar, User, Heart, ChevronRight } from 'lucide-react';
+import { LayoutTemplate, Search, Filter, Calendar, Heart } from 'lucide-react';
 import { fetchPublicPlans } from '../services/dbService';
 import { Plan } from '../types';
 import { ProgressBar } from '../components/common/ProgressBar';
@@ -34,7 +34,6 @@ export function PlanBoard() {
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
-        // Redirect to detail search page with query param
         navigate(`/plans/search?q=${encodeURIComponent(searchQuery)}`);
     };
 
@@ -103,57 +102,60 @@ export function PlanBoard() {
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {plans.map(plan => (
-                        <div 
-                            key={plan.id}
-                            onClick={() => navigate(`/plan/${plan.id}`)}
-                            className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group flex flex-col h-full overflow-hidden"
-                        >
-                            {/* Card Header */}
-                            <div className="p-5 flex-1">
-                                <div className="flex justify-between items-start mb-3">
-                                    <span className="px-2.5 py-1 bg-indigo-50 text-indigo-600 text-xs font-bold rounded-lg border border-indigo-100">
-                                        {plan.category}
-                                    </span>
-                                    <span className="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded">
-                                        {plan.daysLeft !== undefined && plan.daysLeft >= 0 ? `D-${plan.daysLeft}` : '종료'}
-                                    </span>
-                                </div>
-                                
-                                <h3 className="text-lg font-bold text-gray-900 mb-2 line-clamp-2 group-hover:text-primary-600 transition-colors">
-                                    {plan.title}
-                                </h3>
-                                <p className="text-sm text-gray-500 line-clamp-2 mb-4">
-                                    {plan.description}
-                                </p>
-
-                                {/* Progress */}
-                                <div className="mt-auto">
-                                    <div className="flex justify-between text-xs font-bold text-gray-500 mb-1">
-                                        <span>달성률</span>
-                                        <span className="text-primary-600">{plan.progress}%</span>
+                    {plans.map(plan => {
+                        return (
+                            <div 
+                                key={plan.id}
+                                onClick={() => navigate(`/plan/${plan.id}`)}
+                                className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group flex flex-col h-full overflow-hidden"
+                            >
+                                {/* Card Header */}
+                                <div className="p-5 flex-1 flex flex-col">
+                                    <div className="flex justify-between items-start mb-3">
+                                        <span className="px-2.5 py-1 bg-indigo-50 text-indigo-600 text-xs font-bold rounded-lg border border-indigo-100">
+                                            {plan.category}
+                                        </span>
+                                        <span className="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded">
+                                            {plan.daysLeft !== undefined && plan.daysLeft >= 0 ? `D-${plan.daysLeft}` : '종료'}
+                                        </span>
                                     </div>
-                                    <ProgressBar progress={plan.progress} className="h-2" />
-                                </div>
-                            </div>
+                                    
+                                    <h3 className="text-lg font-bold text-gray-900 mb-2 line-clamp-2 group-hover:text-primary-600 transition-colors">
+                                        {plan.title}
+                                    </h3>
+                                    <p className="text-sm text-gray-500 line-clamp-2 mb-6">
+                                        {plan.description}
+                                    </p>
 
-                            {/* Card Footer */}
-                            <div className="bg-gray-50 p-4 border-t border-gray-100 flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <Avatar src={plan.author.avatarUrl} size="sm" />
-                                    <span className="text-xs font-bold text-gray-700 truncate max-w-[100px]">{plan.author.nickname}</span>
+                                    {/* Progress Section */}
+                                    <div className="mt-auto">
+                                        <div className="flex justify-between text-xs font-bold text-gray-500 mb-1.5">
+                                            <span>달성률</span>
+                                            <span className="text-primary-600">{plan.progress || 0}%</span>
+                                        </div>
+                                        {/* Use specific height and handle potential missing progress */}
+                                        <ProgressBar progress={plan.progress || 0} className="h-2" />
+                                    </div>
                                 </div>
-                                <div className="flex items-center gap-3 text-xs text-gray-400">
-                                    <span className="flex items-center gap-1">
-                                        <Heart className="w-3.5 h-3.5" /> {plan.likes || 0}
-                                    </span>
-                                    <span className="flex items-center gap-1">
-                                        <Calendar className="w-3.5 h-3.5" /> {plan.startDate.slice(5)}
-                                    </span>
+
+                                {/* Card Footer */}
+                                <div className="bg-gray-50 p-4 border-t border-gray-100 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <Avatar src={plan.author.avatarUrl} size="sm" />
+                                        <span className="text-xs font-bold text-gray-700 truncate max-w-[100px]">{plan.author.nickname}</span>
+                                    </div>
+                                    <div className="flex items-center gap-3 text-xs text-gray-400">
+                                        <span className="flex items-center gap-1">
+                                            <Heart className="w-3.5 h-3.5" /> {plan.likes || 0}
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                            <Calendar className="w-3.5 h-3.5" /> {plan.startDate.slice(5)}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
 

@@ -302,7 +302,11 @@ export function MyPage() {
                                             진행 중인 계획이 없습니다.
                                         </div>
                                     ) : activePlans.map(plan => (
-                                        <div key={plan.id} className="border border-gray-100 rounded-2xl p-5 hover:border-primary-200 hover:shadow-md transition-all cursor-pointer group">
+                                        <div 
+                                            key={plan.id} 
+                                            onClick={() => navigate(`/plan/${plan.id}`)}
+                                            className="border border-gray-100 rounded-2xl p-5 hover:border-primary-200 hover:shadow-md transition-all cursor-pointer group"
+                                        >
                                             <div className="flex justify-between items-start mb-2">
                                                 <span className="px-2 py-0.5 bg-primary-50 text-primary-600 text-xs font-bold rounded">{plan.category}</span>
                                                 <span className="text-xs font-medium text-gray-400">D-{plan.daysLeft}</span>
@@ -331,7 +335,11 @@ export function MyPage() {
                                             지난 계획이 없습니다.
                                         </div>
                                     ) : pastPlans.map(plan => (
-                                        <div key={plan.id} className="border border-gray-100 rounded-2xl p-5 flex flex-col md:flex-row items-center gap-6">
+                                        <div 
+                                            key={plan.id} 
+                                            onClick={() => navigate(`/plan/${plan.id}`)}
+                                            className="border border-gray-100 rounded-2xl p-5 flex flex-col md:flex-row items-center gap-6 cursor-pointer hover:shadow-md transition-all"
+                                        >
                                             <div className="flex-1 w-full">
                                                 <div className="flex items-center gap-2 mb-1">
                                                     {plan.isSuccess ? (
@@ -351,12 +359,18 @@ export function MyPage() {
                                                     variant="secondary" 
                                                     size="sm" 
                                                     className="flex-1 md:flex-none"
-                                                    onClick={() => setShowAnalysis(plan)}
+                                                    onClick={(e) => { e.stopPropagation(); setShowAnalysis(plan); }}
                                                 >
                                                     <BarChart3 className="w-4 h-4 mr-1" /> 성과 분석
                                                 </Button>
                                                 {!plan.hasRetrospective && (
-                                                    <Button size="sm" className="flex-1 md:flex-none">회고 작성</Button>
+                                                    <Button 
+                                                        size="sm" 
+                                                        className="flex-1 md:flex-none"
+                                                        onClick={(e) => { e.stopPropagation(); /* Nav or Modal for Retro */ }}
+                                                    >
+                                                        회고 작성
+                                                    </Button>
                                                 )}
                                             </div>
                                         </div>
@@ -382,7 +396,11 @@ export function MyPage() {
                                             참여 중인 챌린지가 없습니다. 새로운 도전을 시작해보세요!
                                         </div>
                                     ) : joinedChallenges.map(c => (
-                                        <div key={c.id} className="border border-gray-100 rounded-2xl overflow-hidden hover:shadow-lg transition-all group cursor-pointer">
+                                        <div 
+                                            key={c.id} 
+                                            onClick={() => navigate(`/challenges/${c.id}`)}
+                                            className="border border-gray-100 rounded-2xl overflow-hidden hover:shadow-lg transition-all group cursor-pointer"
+                                        >
                                             <div className="h-24 bg-gray-100 relative">
                                                 <img src={c.imageUrl} alt={c.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                                                 <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors"></div>
@@ -411,7 +429,11 @@ export function MyPage() {
                             {subTab === 'MISC' && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {joinedMonthlyChallenges.map(m => (
-                                        <div key={m.id} className="border border-gray-100 rounded-2xl p-4 flex gap-4 items-center hover:bg-gray-50 cursor-pointer">
+                                        <div 
+                                            key={m.id} 
+                                            onClick={() => navigate(`/miscellaneous/${m.id}`)}
+                                            className="border border-gray-100 rounded-2xl p-4 flex gap-4 items-center hover:bg-gray-50 cursor-pointer"
+                                        >
                                             <img src={m.imageUrl} alt={m.title} className="w-16 h-16 rounded-xl object-cover" />
                                             <div className="flex-1">
                                                 <h3 className="font-bold text-gray-900 mb-1">{m.title}</h3>
@@ -466,12 +488,13 @@ export function MyPage() {
                                 ) : filteredScraps.map(item => (
                                     <div 
                                         key={item.id} 
-                                        className="border border-gray-100 rounded-2xl p-4 hover:border-primary-200 transition-colors group relative bg-white"
+                                        className="border border-gray-100 rounded-2xl p-4 hover:border-primary-200 transition-colors group relative bg-white cursor-pointer"
                                         onClick={() => {
                                             if (item.type === 'PLAN') navigate(`/plan/${item.originalId}`);
+                                            // Handle other types if possible, or just keep default
                                         }}
                                     >
-                                        <button className="absolute top-4 right-4 text-gray-300 hover:text-red-500 p-1"><Trash2 className="w-4 h-4" /></button>
+                                        <button className="absolute top-4 right-4 text-gray-300 hover:text-red-500 p-1" onClick={(e) => { e.stopPropagation(); /* Delete logic would go here if implemented in this view */ }}><Trash2 className="w-4 h-4" /></button>
                                         <div className="flex items-center gap-2 mb-2">
                                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
                                                 item.type === 'PLAN' ? 'bg-blue-100 text-blue-700' : 
@@ -482,7 +505,7 @@ export function MyPage() {
                                             {item.category && <span className="text-[10px] text-gray-400">| {item.category}</span>}
                                             <span className="text-[10px] text-gray-400">• {item.savedAt}</span>
                                         </div>
-                                        <h3 className={`font-bold text-gray-900 mb-1 flex items-center gap-1 ${item.type === 'PLAN' ? 'group-hover:text-primary-600 cursor-pointer' : ''}`}>
+                                        <h3 className={`font-bold text-gray-900 mb-1 flex items-center gap-1 ${item.type === 'PLAN' ? 'group-hover:text-primary-600' : ''}`}>
                                             {item.title} {item.type === 'PLAN' && <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />}
                                         </h3>
                                         <p className="text-sm text-gray-500 line-clamp-2">{item.content}</p>
@@ -503,8 +526,12 @@ export function MyPage() {
                             <div className="grid gap-4">
                                 {/* Use Mock for now as Follow system not in DB yet */}
                                 {followersMock.map(user => (
-                                    <div key={user.id} className="border border-gray-100 rounded-2xl p-4 flex items-center justify-between">
-                                        <div className="flex items-center gap-4 cursor-pointer">
+                                    <div 
+                                        key={user.id} 
+                                        onClick={() => navigate(`/user/${user.id}`)}
+                                        className="border border-gray-100 rounded-2xl p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors"
+                                    >
+                                        <div className="flex items-center gap-4">
                                             <Avatar src={user.avatarUrl} />
                                             <div>
                                                 <h3 className="font-bold text-gray-900 text-sm">{user.nickname}</h3>
@@ -522,7 +549,12 @@ export function MyPage() {
                                             <ProgressBar progress={60} className="h-1 mt-1" />
                                         </div>
 
-                                        <Button size="sm" variant={subTab === 'FOLLOWING' ? 'secondary' : 'primary'} className="flex-shrink-0">
+                                        <Button 
+                                            size="sm" 
+                                            variant={subTab === 'FOLLOWING' ? 'secondary' : 'primary'} 
+                                            className="flex-shrink-0"
+                                            onClick={(e) => { e.stopPropagation(); /* Follow/Unfollow logic */ }}
+                                        >
                                             {subTab === 'FOLLOWING' ? '언팔로우' : '맞팔로우'}
                                         </Button>
                                     </div>
