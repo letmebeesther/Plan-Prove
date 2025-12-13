@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+
+import React, { useState, useRef } from 'react';
 import { 
-    Calendar, Target, AlignLeft, AlertCircle, Plus, Trash2, X, Sparkles, Clock, Wand2
+    Calendar, Target, AlignLeft, AlertCircle, Plus, Trash2, X, Sparkles, Clock, Wand2, GripVertical, Activity
 } from 'lucide-react';
 import { generateAIPlan, generateAIEvidenceSuggestions } from '../services/geminiService';
 import { createPlan } from '../services/dbService';
@@ -48,6 +49,10 @@ export function NewPlan() {
   const [saving, setSaving] = useState(false);
   const [loadingEvidence, setLoadingEvidence] = useState<number | null>(null);
 
+  // Drag and Drop Refs
+  const dragItem = useRef<number | null>(null);
+  const dragOverItem = useRef<number | null>(null);
+
   const getMaxEndDate = () => {
       const start = new Date(startDate);
       const maxDate = new Date(start);
@@ -58,7 +63,6 @@ export function NewPlan() {
   const handleOpenAIModal = () => {
       if (!title) return alert('계획 제목을 먼저 입력해주세요.');
       if (!startDate || !endDate) return alert('시작일과 마감일을 입력해주세요.');
-      // executionStartTime validation removed as per request
       
       const start = new Date(startDate);
       const end = new Date(endDate);
@@ -85,7 +89,7 @@ export function NewPlan() {
               ...item,
               startDate: itemStart.toISOString().split('T')[0],
               dueDate: itemEnd.toISOString().split('T')[0],
-              dueTime: executionStartTime || '' 
+              dueTime: executionEndTime || executionStartTime || '' 
           };
       });
   };
@@ -149,6 +153,7 @@ export function NewPlan() {
           title: '', 
           description: '', 
           dueDate: endDate || startDate,
+          dueTime: executionEndTime || executionStartTime || '',
           evidenceTypes: ['PHOTO']
       }]);
   };
@@ -176,7 +181,11 @@ export function NewPlan() {
               newGoals[index] = {
                   ...newGoals[index],
                   evidenceTypes: [best.type],
-                  evidenceDescription: best.description
+                  evidenceDescription: best.description,
+                  // Save metadata from AI suggestion to state
+                  exampleTimeMetadata: best.timeMetadata,
+                  exampleBiometricData: best.biometricData,
+                  exampleLocationMetadata: best.locationMetadata
               };
               setSubGoals(newGoals);
           }
@@ -185,6 +194,34 @@ export function NewPlan() {
       } finally {
           setLoadingEvidence(null);
       }
+  };
+
+  // Drag and Drop Handlers
+  const onDragStart = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+      dragItem.current = index;
+      e.dataTransfer.effectAllowed = "move";
+      // Optional: Add a class to hide the original or style it
+      e.currentTarget.style.opacity = '0.5';
+  };
+
+  const onDragEnter = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+      if (dragItem.current === null) return;
+      if (dragItem.current === index) return;
+
+      const newList = [...subGoals];
+      const draggedItemContent = newList[dragItem.current];
+      
+      newList.splice(dragItem.current, 1);
+      newList.splice(index, 0, draggedItemContent);
+
+      dragItem.current = index;
+      setSubGoals(newList);
+  };
+
+  const onDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
+      e.currentTarget.style.opacity = '1';
+      dragItem.current = null;
+      dragOverItem.current = null;
   };
 
   const handleSave = async () => {
@@ -209,11 +246,15 @@ export function NewPlan() {
                   description: sg.description || '',
                   status: 'pending',
                   dueDate: sg.dueDate || endDate,
-                  dueTime: executionStartTime,
+                  dueTime: sg.dueTime || executionEndTime || executionStartTime,
                   evidenceTypes: sg.evidenceTypes || ['PHOTO'],
                   evidenceDescription: sg.evidenceDescription,
                   startDate: sg.startDate || startDate,
                   difficulty: sg.difficulty || 'MEDIUM',
+                  // Save Metadata
+                  exampleTimeMetadata: sg.exampleTimeMetadata,
+                  exampleBiometricData: sg.exampleBiometricData,
+                  exampleLocationMetadata: sg.exampleLocationMetadata,
                   evidences: []
               })),
               progress: 0,
@@ -363,16 +404,27 @@ export function NewPlan() {
                 ) : (
                     <div className="space-y-3">
                         {subGoals.map((sg, idx) => (
-                            <div key={idx} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm relative group hover:border-primary-300 transition-colors">
+                            <div 
+                                key={idx} 
+                                className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm relative group hover:border-primary-300 transition-colors"
+                                draggable
+                                onDragStart={(e) => onDragStart(e, idx)}
+                                onDragEnter={(e) => onDragEnter(e, idx)}
+                                onDragEnd={onDragEnd}
+                                onDragOver={(e) => e.preventDefault()}
+                            >
                                 <button 
                                     onClick={() => handleRemoveSubGoal(idx)}
-                                    className="absolute top-4 right-4 text-gray-300 hover:text-red-500 transition-colors p-1"
+                                    className="absolute top-4 right-4 text-gray-300 hover:text-red-500 transition-colors p-1 z-10"
                                 >
                                     <Trash2 className="w-4 h-4" />
                                 </button>
 
                                 <div className="flex items-center gap-3 mb-3 pr-8">
-                                    <span className="w-6 h-6 rounded-full bg-primary-50 text-primary-600 flex items-center justify-center text-xs font-bold shrink-0">
+                                    <div className="cursor-move text-gray-300 hover:text-gray-500 p-1 -ml-2 rounded transition-colors" title="드래그하여 순서 변경">
+                                        <GripVertical className="w-4 h-4" />
+                                    </div>
+                                    <span className="w-6 h-6 rounded-full bg-primary-50 text-primary-600 flex items-center justify-center text-xs font-bold shrink-0 select-none">
                                         {idx + 1}
                                     </span>
                                     <input 
@@ -394,6 +446,7 @@ export function NewPlan() {
                                     
                                     <div className="flex flex-wrap gap-2">
                                         <div className="flex-1 min-w-[120px]">
+                                            <label className="block text-[10px] text-gray-400 mb-1">마감 날짜</label>
                                             <input 
                                                 type="date" 
                                                 className="w-full text-xs border-gray-200 rounded-lg p-2 border"
@@ -401,22 +454,28 @@ export function NewPlan() {
                                                 onChange={(e) => handleSubGoalChange(idx, 'dueDate', e.target.value)}
                                             />
                                         </div>
-                                        <div className="flex-1 min-w-[120px]">
-                                            <select 
+                                        <div className="flex-1 min-w-[100px]">
+                                            <label className="block text-[10px] text-gray-400 mb-1">마감 시간</label>
+                                            <input 
+                                                type="time" 
                                                 className="w-full text-xs border-gray-200 rounded-lg p-2 border bg-white"
-                                                value={sg.evidenceTypes?.[0] || 'PHOTO'}
-                                                onChange={(e) => handleSubGoalChange(idx, 'evidenceTypes', [e.target.value])}
-                                            >
-                                                <option value="PHOTO">📸 사진 촬영</option>
-                                                <option value="VIDEO">🎥 영상 녹화</option>
-                                                <option value="TEXT">📝 텍스트 기록</option>
-                                                <option value="BIOMETRIC">⌚️ 워치 데이터</option>
-                                                <option value="EMAIL">📧 이메일 인증</option>
-                                                <option value="API">🔗 자격증 연동</option>
-                                            </select>
+                                                value={sg.dueTime || ''}
+                                                onChange={(e) => handleSubGoalChange(idx, 'dueTime', e.target.value)}
+                                            />
                                         </div>
                                     </div>
                                     
+                                    {/* Display AI Metadata if available */}
+                                    {sg.exampleBiometricData && (
+                                        <div className="mt-2 p-2 bg-indigo-50 border border-indigo-100 rounded-lg flex items-start gap-2">
+                                            <Activity className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0" />
+                                            <div>
+                                                <span className="text-xs font-bold text-indigo-700 block">AI 권장 생체 데이터</span>
+                                                <span className="text-xs text-indigo-600">{sg.exampleBiometricData}</span>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {sg.title && (
                                         <div className="flex justify-end">
                                             <button 

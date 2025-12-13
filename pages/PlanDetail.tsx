@@ -5,7 +5,7 @@ import {
     Calendar, ChevronLeft, Target, Clock, CheckCircle2, AlertCircle, 
     Upload, Camera, Type as TypeIcon, Mail, Link as LinkIcon, MoreHorizontal,
     Share2, Bookmark, Trash2, X, AlertTriangle, PlayCircle, ShieldCheck,
-    BarChart3, TrendingUp, Info
+    Info, Watch, Activity, RefreshCw, Zap
 } from 'lucide-react';
 import { Plan, Evidence, SubGoal } from '../types';
 import { fetchPlanById, submitEvidence, updateSubGoalStatus, deletePlan, toggleScrap } from '../services/dbService';
@@ -44,9 +44,6 @@ export function PlanDetail() {
     const [error, setError] = useState<string | null>(null);
     const [isScrapped, setIsScrapped] = useState(false);
     
-    // Graph State
-    const [activeGraphTab, setActiveGraphTab] = useState<'PROGRESS' | 'CREDIBILITY'>('PROGRESS');
-    
     // Evidence Modal State
     const [showCertModal, setShowCertModal] = useState(false);
     const [selectedSubGoalIndex, setSelectedSubGoalIndex] = useState<number | null>(null);
@@ -55,6 +52,14 @@ export function PlanDetail() {
     const [certFile, setCertFile] = useState<File | null>(null);
     const [certPreviewUrl, setCertPreviewUrl] = useState<string | null>(null);
     
+    // Biometric State
+    const [biometricValue, setBiometricValue] = useState('');
+    const [isFetchingBio, setIsFetchingBio] = useState(false);
+
+    // Verification Status UI
+    const [verifyStatus, setVerifyStatus] = useState<'IDLE' | 'VERIFYING' | 'SUCCESS' | 'FAIL'>('IDLE');
+    const [verifyMessage, setVerifyMessage] = useState('');
+
     // Email Verification State
     const [certEmail, setCertEmail] = useState('');
     const [emailVerificationSent, setEmailVerificationSent] = useState(false);
@@ -79,67 +84,12 @@ export function PlanDetail() {
         try {
             const data = await fetchPlanById(id);
             setPlan(data);
-            // In a real app, check if scrapped by current user
         } catch (e) {
             setError('계획을 불러오는데 실패했습니다.');
         } finally {
             setLoading(false);
         }
     };
-
-    // Helper for Analysis Data
-    const getAnalysisData = () => {
-        if (!plan || !plan.subGoals || plan.subGoals.length === 0) return { progressHistory: [], credibilityScores: [] };
-
-        const totalGoals = plan.subGoals.length;
-        
-        // Progress History
-        // Start with 0% at start date
-        let history = [{ date: '시작', value: 0, sortDate: new Date(plan.startDate).getTime() }];
-        
-        // Find all completed goals with timestamps
-        const completed = plan.subGoals
-            .filter(g => g.status === 'completed' && g.evidences && g.evidences.length > 0)
-            .map(g => {
-                const lastEvidence = g.evidences![g.evidences!.length - 1];
-                return {
-                    date: new Date(lastEvidence.createdAt),
-                    title: g.title
-                };
-            })
-            .sort((a, b) => a.date.getTime() - b.date.getTime());
-
-        // Calculate cumulative progress
-        let currentProg = 0;
-        const step = 100 / totalGoals;
-        
-        completed.forEach(c => {
-            currentProg += step;
-            history.push({
-                date: c.date.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }),
-                value: Math.min(Math.round(currentProg), 100),
-                sortDate: c.date.getTime()
-            });
-        });
-
-        // Credibility Scores
-        const scores = plan.subGoals.map((sg, i) => {
-            if (sg.status !== 'completed' || !sg.evidences || sg.evidences.length === 0) {
-                return { label: `${i+1}`, score: 0, title: sg.title, isCompleted: false };
-            }
-            const ev = sg.evidences[sg.evidences.length - 1];
-            return {
-                label: `${i+1}`,
-                score: ev.credibilityScore || 0,
-                title: sg.title,
-                isCompleted: true
-            };
-        });
-
-        return { progressHistory: history, credibilityScores: scores };
-    };
-
-    const { progressHistory, credibilityScores } = getAnalysisData();
 
     const handleScrapToggle = async () => {
         if (!currentUser || !plan) return;
@@ -160,15 +110,30 @@ export function PlanDetail() {
     const handleOpenCertModal = (index: number, subGoal: SubGoal) => {
         setSelectedSubGoalIndex(index);
         // Default to first evidence type of the subgoal or PHOTO
-        setCertType(subGoal.evidenceTypes?.[0] || 'PHOTO');
+        // If first type is BIOMETRIC but user has no wearable, fallback to PHOTO
+        let defaultType = subGoal.evidenceTypes?.[0] || 'PHOTO';
+        if (defaultType === 'BIOMETRIC' && !currentUser?.hasWearable) {
+            defaultType = 'PHOTO';
+        }
+        
+        setCertType(defaultType);
         setCertText('');
         setCertFile(null);
         setCertPreviewUrl(null);
+        setBiometricValue('');
+        setIsFetchingBio(false);
+        
+        // Reset Email State
         setCertEmail('');
         setEmailVerificationSent(false);
         setVerificationCodeInput('');
         setGeneratedCode(null);
         setEmailError(null);
+        
+        // Reset Verify State
+        setVerifyStatus('IDLE');
+        setVerifyMessage('');
+        
         setShowCertModal(true);
     };
 
@@ -177,6 +142,7 @@ export function PlanDetail() {
             const file = e.target.files[0];
             setCertFile(file);
             setCertPreviewUrl(URL.createObjectURL(file));
+            setVerifyStatus('IDLE'); // Reset status on new file
         }
     };
 
@@ -227,45 +193,179 @@ export function PlanDetail() {
         }
     };
 
+    // --- Simulated Biometric Sync ---
+    const handleSyncBiometric = () => {
+        if (selectedSubGoalIndex === null || !plan) return;
+        setIsFetchingBio(true);
+        setVerifyStatus('IDLE');
+        setVerifyMessage('');
+
+        // Simulate API delay
+        setTimeout(() => {
+            const subGoal = plan.subGoals[selectedSubGoalIndex];
+            const rule = subGoal.exampleBiometricData || '';
+            let simulatedValue = '0';
+
+            // Try to generate a "passing" value based on the rule
+            const match = rule.match(/([><=])\s*(\d+)/);
+            if (match) {
+                const operator = match[1];
+                const threshold = parseInt(match[2], 10);
+                // Generate a random successful value
+                if (operator === '>') simulatedValue = (threshold + Math.floor(Math.random() * 20) + 5).toString();
+                else if (operator === '<') simulatedValue = (threshold - Math.floor(Math.random() * 10) - 1).toString();
+                else simulatedValue = threshold.toString();
+            } else {
+                // Default if no rule
+                simulatedValue = (Math.floor(Math.random() * 60) + 80).toString(); 
+            }
+
+            setBiometricValue(simulatedValue);
+            setIsFetchingBio(false);
+        }, 2000);
+    };
+
+    // --- Validation Logic ---
+
+    const validateMediaTime = (file: File, dueTimeStr?: string): { valid: boolean; msg: string } => {
+        if (!dueTimeStr) return { valid: true, msg: '' }; // No strict time set
+
+        const now = new Date();
+        const fileTime = new Date(file.lastModified);
+        
+        // Construct target Date based on Today + DueTime
+        const targetDate = new Date();
+        const [hours, minutes] = dueTimeStr.split(':').map(Number);
+        targetDate.setHours(hours, minutes, 0, 0);
+
+        const diffMs = Math.abs(targetDate.getTime() - fileTime.getTime());
+        const diffMins = diffMs / (1000 * 60);
+
+        // Allow if file was created TODAY and within 20 mins of target
+        const isSameDay = fileTime.toDateString() === targetDate.toDateString();
+
+        if (!isSameDay) {
+            return { valid: false, msg: '오늘 촬영된 사진/영상이 아닙니다.' };
+        }
+
+        if (diffMins > 20) {
+            return { valid: false, msg: `인증 시간(${dueTimeStr}) 전후 20분을 초과했습니다.\n(촬영 시간: ${fileTime.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})})` };
+        }
+
+        return { valid: true, msg: '시간 검증 완료' };
+    };
+
+    const validateBiometric = (inputVal: string, aiRule?: string): { valid: boolean; msg: string } => {
+        if (!inputVal) return { valid: false, msg: '데이터를 동기화해주세요.' };
+        if (!aiRule) return { valid: true, msg: '조건 없음 (통과)' };
+
+        const numVal = parseFloat(inputVal);
+        if (isNaN(numVal)) return { valid: false, msg: '유효한 수치가 아닙니다.' };
+
+        // Simple Regex to extract number and operator
+        const match = aiRule.match(/([><=])\s*(\d+)/);
+        
+        if (match) {
+            const operator = match[1];
+            const threshold = parseFloat(match[2]);
+            
+            if (operator === '>' && numVal > threshold) return { valid: true, msg: '목표 수치 달성!' };
+            if (operator === '<' && numVal < threshold) return { valid: true, msg: '목표 수치 달성!' };
+            if (operator === '=' && numVal === threshold) return { valid: true, msg: '목표 수치 달성!' };
+            
+            return { valid: false, msg: `목표 조건(${aiRule})을 만족하지 못했습니다.` };
+        }
+
+        return { valid: true, msg: '조건 검증 불가 (자동 통과)' };
+    };
+
     const handleEvidenceSubmit = async () => {
         if (!plan || selectedSubGoalIndex === null || !currentUser) return;
         
+        const subGoal = plan.subGoals[selectedSubGoalIndex];
         setSubmitting(true);
+        setVerifyStatus('VERIFYING');
+        setVerifyMessage('증거물 유효성을 검사 중입니다...');
+
         try {
             let evidenceData: Evidence = {
                 id: `ev-${Date.now()}`,
                 type: certType,
                 status: 'PENDING',
                 createdAt: new Date().toISOString(),
-                credibilityScore: Math.floor(Math.random() * 11) + 89 // 89 ~ 99 점 랜덤 부여 (AI 분석 시뮬레이션)
+                credibilityScore: 0
             };
 
-            // Type specific validation & data
+            // 1. Validation Steps based on Type
             if (certType === 'PHOTO' || certType === 'VIDEO') {
                 if (!certFile) throw new Error('파일을 업로드해주세요.');
+
+                // A. Time Check
+                const timeCheck = validateMediaTime(certFile, subGoal.dueTime);
+                if (!timeCheck.valid) {
+                    setVerifyStatus('FAIL');
+                    setVerifyMessage(timeCheck.msg);
+                    setSubmitting(false);
+                    return;
+                }
+
+                // B. Hash Check (Duplicate Prevention)
+                const currentHash = await calculateFileHash(certFile);
+                const isDuplicate = plan.subGoals.some(sg => 
+                    sg.evidences?.some(ev => ev.fileHash === currentHash)
+                );
+
+                if (isDuplicate) {
+                    setVerifyStatus('FAIL');
+                    setVerifyMessage('이미 사용된 사진/영상입니다. 새로운 증거물을 제출해주세요.');
+                    setSubmitting(false);
+                    return;
+                }
+
                 const url = await uploadImage(certFile, 'evidence');
-                const hash = await calculateFileHash(certFile);
                 evidenceData.url = url;
-                evidenceData.fileHash = hash;
+                evidenceData.fileHash = currentHash;
                 evidenceData.imageUrls = [url];
+                evidenceData.credibilityScore = 98; 
+
+            } else if (certType === 'BIOMETRIC') {
+                // Biometric Check
+                const bioCheck = validateBiometric(biometricValue, subGoal.exampleBiometricData);
+                if (!bioCheck.valid) {
+                    setVerifyStatus('FAIL');
+                    setVerifyMessage(bioCheck.msg);
+                    setSubmitting(false);
+                    return;
+                }
+                evidenceData.content = `생체 데이터 인증: ${biometricValue}`;
+                evidenceData.credibilityScore = 100; // Trusted source (simulated)
+
             } else if (certType === 'TEXT') {
                 if (!certText) throw new Error('내용을 입력해주세요.');
                 evidenceData.content = certText;
+                evidenceData.credibilityScore = 80;
+
             } else if (certType === 'EMAIL') {
                 if (!emailVerificationSent || !generatedCode) throw new Error('이메일 인증이 필요합니다.');
                 if (verificationCodeInput !== generatedCode) throw new Error('인증 코드가 일치하지 않습니다.');
                 evidenceData.verifiedEmail = certEmail;
-                evidenceData.status = 'APPROVED'; // Auto-approve for email verification
-                evidenceData.credibilityScore = 100; // 이메일 인증은 신뢰도 100
+                evidenceData.status = 'APPROVED';
+                evidenceData.credibilityScore = 100;
             }
+
+            setVerifyStatus('SUCCESS');
+            setVerifyMessage('인증 유효성 검사 통과! 제출합니다...');
+            
+            await new Promise(resolve => setTimeout(resolve, 800));
 
             await submitEvidence(plan.id, selectedSubGoalIndex, evidenceData);
             
             alert('인증이 완료되었습니다!');
             setShowCertModal(false);
-            loadPlan(); // Refresh
+            loadPlan(); 
         } catch (e: any) {
-            alert(e.message || '인증 제출 중 오류가 발생했습니다.');
+            setVerifyStatus('FAIL');
+            setVerifyMessage(e.message || '오류가 발생했습니다.');
         } finally {
             setSubmitting(false);
         }
@@ -282,10 +382,35 @@ export function PlanDetail() {
         }
     };
 
+    const getDDay = (dateStr?: string) => {
+        if (!dateStr) return null;
+        const target = new Date(dateStr);
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        target.setHours(0,0,0,0);
+        
+        const diff = target.getTime() - today.getTime();
+        const diffDays = Math.ceil(diff / (1000 * 60 * 60 * 24));
+        
+        if (diffDays === 0) return "D-Day";
+        if (diffDays > 0) return `D-${diffDays}`;
+        return `D+${Math.abs(diffDays)}`;
+    };
+
     if (loading) return <div className="p-20 text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div></div>;
     if (error || !plan) return <div className="p-20 text-center">{error || 'Plan not found'}</div>;
 
     const isAuthor = currentUser?.id === plan.authorId;
+
+    // Filter available cert types: BIOMETRIC only if user has wearable
+    const availableCertTypes = [
+        { id: 'PHOTO', label: '사진', icon: Camera },
+        { id: 'VIDEO', label: '영상', icon: PlayCircle },
+        { id: 'TEXT', label: '글', icon: TypeIcon },
+        ...(currentUser?.hasWearable ? [{ id: 'BIOMETRIC', label: '생체', icon: Watch }] : []),
+        { id: 'EMAIL', label: '이메일', icon: Mail },
+        { id: 'API', label: '연동', icon: LinkIcon }
+    ];
 
     return (
         <div className="max-w-4xl mx-auto pb-20 animate-fade-in">
@@ -339,144 +464,20 @@ export function PlanDetail() {
                 </div>
             </div>
 
-            {/* NEW: Analysis & Graph Section */}
-            <div className="bg-white rounded-3xl p-6 border border-gray-100 mb-8 shadow-sm">
-                <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-lg font-bold flex items-center gap-2 text-gray-900">
-                        <BarChart3 className="w-5 h-5 text-primary-600" />
-                        성취도 분석
-                    </h2>
-                    <div className="flex bg-gray-100 p-1 rounded-xl">
-                        <button 
-                            onClick={() => setActiveGraphTab('PROGRESS')}
-                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${activeGraphTab === 'PROGRESS' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
-                        >
-                            달성 추이
-                        </button>
-                        <button 
-                            onClick={() => setActiveGraphTab('CREDIBILITY')}
-                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${activeGraphTab === 'CREDIBILITY' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
-                        >
-                            신빙성 점수
-                        </button>
-                    </div>
-                </div>
-
-                <div className="h-64 w-full bg-gray-50 rounded-2xl p-6 flex items-end relative overflow-hidden border border-gray-100">
-                    {activeGraphTab === 'PROGRESS' ? (
-                         progressHistory.length > 0 ? (
-                            <div className="w-full h-full relative">
-                                <svg className="w-full h-full overflow-visible" viewBox={`0 0 100 100`} preserveAspectRatio="none">
-                                    {/* Grid Lines */}
-                                    <line x1="0" y1="0" x2="100" y2="0" stroke="#e5e7eb" strokeWidth="0.5" strokeDasharray="2 2" vectorEffect="non-scaling-stroke" />
-                                    <line x1="0" y1="50" x2="100" y2="50" stroke="#e5e7eb" strokeWidth="0.5" strokeDasharray="2 2" vectorEffect="non-scaling-stroke" />
-                                    <line x1="0" y1="100" x2="100" y2="100" stroke="#e5e7eb" strokeWidth="0.5" vectorEffect="non-scaling-stroke" />
-
-                                    {/* Line Graph */}
-                                    <polyline
-                                        fill="none"
-                                        stroke="#0ea5e9"
-                                        strokeWidth="2"
-                                        points={progressHistory.map((p, i) => {
-                                            const x = (i / (progressHistory.length - 1)) * 100;
-                                            const y = 100 - p.value;
-                                            return `${x},${y}`;
-                                        }).join(' ')}
-                                        vectorEffect="non-scaling-stroke"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                    />
-                                    
-                                    {/* Gradient Area under line (Optional for polish) */}
-                                    <polygon 
-                                        fill="url(#progress-gradient)" 
-                                        points={`0,100 ${progressHistory.map((p, i) => {
-                                            const x = (i / (progressHistory.length - 1)) * 100;
-                                            const y = 100 - p.value;
-                                            return `${x},${y}`;
-                                        }).join(' ')} 100,100`} 
-                                        opacity="0.2"
-                                    />
-                                    <defs>
-                                        <linearGradient id="progress-gradient" x1="0" x2="0" y1="0" y2="1">
-                                            <stop offset="0%" stopColor="#0ea5e9" />
-                                            <stop offset="100%" stopColor="#ffffff" />
-                                        </linearGradient>
-                                    </defs>
-                                </svg>
-
-                                {/* Points and Labels Overlay */}
-                                <div className="absolute inset-0 pointer-events-none">
-                                    {progressHistory.map((p, i) => {
-                                        const left = (i / (progressHistory.length - 1)) * 100;
-                                        const bottom = p.value;
-                                        return (
-                                            <div key={i} className="absolute group transform -translate-x-1/2 translate-y-1/2 flex flex-col items-center" style={{ left: `${left}%`, bottom: `${bottom}%` }}>
-                                                <div className="w-3 h-3 bg-white border-2 border-primary-600 rounded-full shadow-sm z-10 group-hover:scale-125 transition-transform duration-200"></div>
-                                                <div className="absolute bottom-4 bg-gray-900 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20 pointer-events-auto">
-                                                    {p.date}: {p.value}%
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                                {/* Date Labels on X-axis */}
-                                <div className="absolute bottom-[-24px] left-0 w-full flex justify-between text-[10px] text-gray-400 px-1">
-                                    {progressHistory.map((p, i) => (
-                                        <span key={i}>{p.date}</span>
-                                    ))}
-                                </div>
-                            </div>
-                         ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center text-gray-400">
-                                <TrendingUp className="w-8 h-8 mb-2 opacity-20" />
-                                <span className="text-sm">데이터가 충분하지 않습니다.</span>
-                            </div>
-                         )
-                    ) : (
-                         // Bar Chart Logic
-                         <div className="w-full h-full flex items-end justify-between gap-2 px-2">
-                            {credibilityScores.length > 0 ? credibilityScores.map((score, i) => (
-                                <div key={i} className="flex-1 flex flex-col items-center group relative h-full justify-end">
-                                    <div 
-                                        className={`w-full max-w-[20px] rounded-t-md transition-all duration-500 relative ${
-                                            !score.isCompleted ? 'bg-gray-100 h-2' :
-                                            score.score >= 90 ? 'bg-green-400 hover:bg-green-500' : 
-                                            score.score >= 70 ? 'bg-indigo-400 hover:bg-indigo-500' : 'bg-yellow-400 hover:bg-yellow-500'
-                                        }`} 
-                                        style={{ height: score.isCompleted ? `${score.score}%` : '8px' }}
-                                    >
-                                        {score.isCompleted && (
-                                            <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-xs font-bold text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                {score.score}
-                                            </div>
-                                        )}
-                                    </div>
-                                    <span className="text-[10px] text-gray-400 mt-2">{score.label}</span>
-                                </div>
-                            )) : (
-                                <div className="w-full h-full flex flex-col items-center justify-center text-gray-400">
-                                    <ShieldCheck className="w-8 h-8 mb-2 opacity-20" />
-                                    <span className="text-sm">인증 기록이 없습니다.</span>
-                                </div>
-                            )}
-                         </div>
-                    )}
-                </div>
-            </div>
-
             {/* SubGoals List */}
             <div className="space-y-4">
                 <h2 className="text-xl font-bold text-gray-900 mb-4 px-2">세부 목표 ({plan.subGoals.length})</h2>
                 {plan.subGoals.map((sg, idx) => {
                     const latestEvidence = sg.evidences && sg.evidences.length > 0 ? sg.evidences[sg.evidences.length - 1] : null;
                     const credibilityScore = latestEvidence?.credibilityScore;
+                    const dDay = getDDay(sg.dueDate);
+                    const hasBiometricEvidence = sg.evidences?.some(e => e.type === 'BIOMETRIC');
 
                     return (
                         <div key={idx} className={`bg-white rounded-2xl p-5 border transition-all ${sg.status === 'completed' ? 'border-green-200 bg-green-50/30' : 'border-gray-100'}`}>
                             <div className="flex justify-between items-start gap-4">
                                 <div className="flex-1">
-                                    <div className="flex items-center gap-3 mb-2">
+                                    <div className="flex items-center gap-3 mb-1">
                                         <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
                                             sg.status === 'completed' ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-500'
                                         }`}>
@@ -484,17 +485,41 @@ export function PlanDetail() {
                                         </div>
                                         <h3 className={`font-bold text-gray-900 ${sg.status === 'completed' ? 'line-through text-gray-400' : ''}`}>{sg.title}</h3>
                                     </div>
+                                    
+                                    {/* D-Day & Due Date Info */}
+                                    <div className="pl-9 mb-2 flex items-center gap-2 text-xs">
+                                        {dDay && (
+                                            <span className={`font-bold px-1.5 py-0.5 rounded ${
+                                                dDay === 'D-Day' ? 'bg-red-100 text-red-600' :
+                                                dDay.startsWith('D+') ? 'bg-gray-100 text-gray-500' : 'bg-blue-50 text-blue-600'
+                                            }`}>
+                                                {dDay}
+                                            </span>
+                                        )}
+                                        {sg.dueDate && (
+                                            <span className="text-gray-400 flex items-center gap-1">
+                                                <Calendar className="w-3 h-3" /> {sg.dueDate}
+                                            </span>
+                                        )}
+                                    </div>
+
                                     <p className="text-sm text-gray-500 pl-9 mb-3">{sg.description}</p>
                                     
                                     {sg.status === 'completed' && sg.evidences && sg.evidences.length > 0 && (
                                         <div className="pl-9 mb-2">
-                                            <div className="flex items-center gap-2 mb-2">
+                                            <div className="flex items-center flex-wrap gap-2 mb-2">
                                                 <div className="text-xs text-green-600 font-bold flex items-center gap-1">
                                                     <CheckCircle2 className="w-3 h-3" /> 인증 완료 ({sg.evidences.length})
                                                 </div>
                                                 {credibilityScore && (
                                                     <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100 flex items-center gap-1">
                                                         <ShieldCheck className="w-3 h-3" /> 신빙성 {credibilityScore}%
+                                                    </span>
+                                                )}
+                                                {/* Biometric Badge */}
+                                                {hasBiometricEvidence && (
+                                                    <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-100 flex items-center gap-1">
+                                                        <Activity className="w-3 h-3" /> 생체 데이터 인증
                                                     </span>
                                                 )}
                                             </div>
@@ -546,17 +571,16 @@ export function PlanDetail() {
                             <p className="text-xs text-gray-500">
                                 {selectedSubGoalIndex !== null ? plan.subGoals[selectedSubGoalIndex].description : ''}
                             </p>
+                            {selectedSubGoalIndex !== null && plan.subGoals[selectedSubGoalIndex].dueTime && (
+                                <p className="text-xs text-primary-600 font-bold mt-1 flex items-center gap-1">
+                                    <Clock className="w-3 h-3" /> 목표 시간: {plan.subGoals[selectedSubGoalIndex].dueTime} (±20분 허용)
+                                </p>
+                            )}
                         </div>
 
-                        {/* Certification Type Selector */}
+                        {/* Certification Type Selector - Filtered for Wearable Users */}
                         <div className="flex gap-2 overflow-x-auto pb-2 mb-4 no-scrollbar">
-                            {[
-                                { id: 'PHOTO', label: '사진', icon: Camera },
-                                { id: 'VIDEO', label: '영상', icon: PlayCircle },
-                                { id: 'TEXT', label: '글', icon: TypeIcon },
-                                { id: 'EMAIL', label: '이메일', icon: Mail },
-                                { id: 'API', label: '연동', icon: LinkIcon }
-                            ].map(t => (
+                            {availableCertTypes.map(t => (
                                 <button
                                     key={t.id}
                                     onClick={() => setCertType(t.id as any)}
@@ -576,7 +600,7 @@ export function PlanDetail() {
                                 <div className="space-y-3">
                                     <div 
                                         onClick={() => fileInputRef.current?.click()}
-                                        className="h-40 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 hover:border-primary-400 transition-colors overflow-hidden"
+                                        className="h-40 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 hover:border-primary-400 transition-colors overflow-hidden relative"
                                     >
                                         {certPreviewUrl ? (
                                             <img src={certPreviewUrl} alt="Preview" className="w-full h-full object-cover" />
@@ -601,6 +625,62 @@ export function PlanDetail() {
                                         value={certText}
                                         onChange={e => setCertText(e.target.value)}
                                     />
+                                </div>
+                            )}
+
+                            {certType === 'BIOMETRIC' && (
+                                <div className="space-y-4">
+                                    <div className="bg-indigo-50 p-4 rounded-xl text-xs text-indigo-700">
+                                        <span className="font-bold text-sm block mb-1 flex items-center gap-1">
+                                            <Activity className="w-4 h-4" /> AI 권장 데이터
+                                        </span>
+                                        <p className="opacity-80 mb-2">
+                                            {selectedSubGoalIndex !== null && plan.subGoals[selectedSubGoalIndex].exampleBiometricData 
+                                                ? plan.subGoals[selectedSubGoalIndex].exampleBiometricData
+                                                : "설정된 목표 수치가 없습니다."}
+                                        </p>
+                                    </div>
+
+                                    {!biometricValue ? (
+                                        <div className="flex flex-col items-center justify-center py-6 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50">
+                                            {isFetchingBio ? (
+                                                <div className="flex flex-col items-center gap-3">
+                                                    <div className="relative">
+                                                        <div className="absolute inset-0 bg-primary-400 rounded-full animate-ping opacity-25"></div>
+                                                        <div className="relative bg-white p-3 rounded-full shadow-md">
+                                                            <Watch className="w-8 h-8 text-primary-600 animate-pulse" />
+                                                        </div>
+                                                    </div>
+                                                    <p className="text-sm font-bold text-gray-600 animate-pulse">워치 데이터 측정 중...</p>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <Watch className="w-10 h-10 text-gray-300 mb-3" />
+                                                    <p className="text-sm text-gray-500 mb-4">연동된 웨어러블 기기에서<br/>데이터를 가져옵니다.</p>
+                                                    <Button onClick={handleSyncBiometric} className="flex items-center gap-2">
+                                                        <RefreshCw className="w-4 h-4" /> 워치 데이터 동기화
+                                                    </Button>
+                                                </>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="bg-white border-2 border-primary-100 rounded-xl p-5 text-center shadow-sm relative overflow-hidden">
+                                            <div className="absolute top-0 right-0 bg-primary-100 text-primary-700 text-[10px] font-bold px-2 py-1 rounded-bl-lg">
+                                                연동 완료
+                                            </div>
+                                            <p className="text-gray-500 text-xs mb-1">측정된 데이터</p>
+                                            <div className="text-3xl font-bold text-gray-900 mb-2 flex items-center justify-center gap-2">
+                                                <Zap className="w-6 h-6 text-yellow-500 fill-current" />
+                                                {biometricValue}
+                                            </div>
+                                            <button 
+                                                onClick={handleSyncBiometric}
+                                                className="text-xs text-gray-400 underline hover:text-gray-600"
+                                            >
+                                                다시 측정하기
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
@@ -662,7 +742,7 @@ export function PlanDetail() {
                                 </div>
                             )}
                             
-                            {(certType === 'API' || certType === 'BIOMETRIC') && (
+                            {certType === 'API' && (
                                 <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-xl border border-dashed border-gray-200">
                                     <LinkIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
                                     <p className="text-sm">현재 데모 버전에서는 지원하지 않는 기능입니다.</p>
@@ -671,8 +751,21 @@ export function PlanDetail() {
                             )}
                         </div>
 
-                        <Button fullWidth onClick={handleEvidenceSubmit} disabled={submitting}>
-                            {submitting ? '제출 중...' : '인증 제출하기'}
+                        {/* Validation Feedback UI */}
+                        {verifyStatus !== 'IDLE' && (
+                            <div className={`mb-4 p-3 rounded-xl flex items-start gap-2 text-sm ${
+                                verifyStatus === 'SUCCESS' ? 'bg-green-50 text-green-700' :
+                                verifyStatus === 'FAIL' ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-600'
+                            }`}>
+                                {verifyStatus === 'SUCCESS' && <CheckCircle2 className="w-5 h-5 shrink-0" />}
+                                {verifyStatus === 'FAIL' && <AlertTriangle className="w-5 h-5 shrink-0" />}
+                                {verifyStatus === 'VERIFYING' && <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin shrink-0" />}
+                                <span>{verifyMessage}</span>
+                            </div>
+                        )}
+
+                        <Button fullWidth onClick={handleEvidenceSubmit} disabled={submitting || verifyStatus === 'FAIL' || (certType === 'BIOMETRIC' && !biometricValue)}>
+                            {submitting ? '처리 중...' : '인증 제출하기'}
                         </Button>
                     </div>
                 </div>
@@ -689,4 +782,3 @@ export function PlanDetail() {
         </div>
     );
 }
-    
