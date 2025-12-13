@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { ChevronRight, X } from 'lucide-react';
 import { Button } from '../components/common/Button';
@@ -84,7 +85,8 @@ export function IntroPage() {
     if (currentStep < steps.length - 1) {
       setCurrentStep(currentStep + 1);
     } else {
-      navigate('/');
+      // Intro complete -> Go to Login/Signup
+      navigate('/login');
     }
   };
   
@@ -95,7 +97,7 @@ export function IntroPage() {
   };
   
   const handleSkip = () => {
-    navigate('/');
+    navigate('/login');
   };
   
   const isStepComplete = () => {

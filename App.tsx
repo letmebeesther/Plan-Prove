@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
 import { NewPlan } from './pages/NewPlan';
@@ -57,58 +57,73 @@ function SplashScreen({ onFinish, isLoading }: SplashScreenProps) {
   );
 }
 
-function AppRoutes() {
+// Protected Route Component
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const { currentUser } = useAuth();
+  if (!currentUser) {
+    return <Navigate to="/login" replace />;
+  }
+  return <>{children}</>;
+};
+
+function MainRoutes() {
   const { currentUser, loading: authLoading } = useAuth();
   const [showSplash, setShowSplash] = useState(true);
+  const navigate = useNavigate();
 
-  // Removed automatic timeout effect. User must click the button.
-
+  // Handle Splash Screen Logic inside Router context
   if (showSplash || authLoading) {
-    return <SplashScreen onFinish={() => setShowSplash(false)} isLoading={authLoading} />;
+    return <SplashScreen 
+      onFinish={() => {
+        // Safe navigation using React Router instead of window.location
+        navigate('/', { replace: true });
+        setShowSplash(false);
+      }} 
+      isLoading={authLoading} 
+    />;
   }
 
   return (
-    <HashRouter>
-      <Routes>
-        {/* Public Routes */}
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/signup" element={<LoginPage />} />
-        <Route path="/intro" element={<IntroPage />} />
-        
-        {/* Main Routes */}
-        <Route path="/*" element={
-          <Layout>
-            <Routes>
-              {/* If not logged in at root, redirect to login */}
-              <Route path="/" element={currentUser ? <Home /> : <Navigate to="/login" replace />} />
-              
-              <Route path="/new-plan" element={<NewPlan />} />
-              <Route path="/plan/:id" element={<PlanDetail />} />
-              <Route path="/challenges" element={<Challenges />} />
-              <Route path="/challenges/:id" element={<ChallengeDetail />} />
-              <Route path="/new-challenge" element={<NewChallenge />} />
-              <Route path="/trending" element={<Trending />} />
-              <Route path="/hall-of-fame" element={<HallOfFame />} />
-              <Route path="/miscellaneous" element={<Miscellaneous />} />
-              <Route path="/miscellaneous/:id" element={<MonthlyChallengeDetail />} />
-              <Route path="/my-page" element={<MyPage />} />
-              <Route path="/settings" element={<Settings />} />
-              
-              {/* Search & Board Routes */}
-              <Route path="/search" element={<PlanSearch />} />
-              <Route path="/plans" element={<PlanBoard />} />
-              <Route path="/plans/search" element={<PlanSearch />} />
+    <Routes>
+      {/* Public Routes */}
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/signup" element={<LoginPage />} />
+      <Route path="/intro" element={<IntroPage />} />
+      
+      {/* Main Routes */}
+      <Route path="/*" element={
+        <Layout>
+          <Routes>
+            {/* Home: Redirect to Login if not authenticated */}
+            <Route path="/" element={currentUser ? <Home /> : <Navigate to="/login" replace />} />
+            
+            {/* Protected Routes */}
+            <Route path="/new-plan" element={<ProtectedRoute><NewPlan /></ProtectedRoute>} />
+            <Route path="/my-page" element={<ProtectedRoute><MyPage /></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            <Route path="/new-challenge" element={<ProtectedRoute><NewChallenge /></ProtectedRoute>} />
+            <Route path="/chat/:roomId" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
+            
+            {/* Public/Hybrid Routes (Can be viewed without login, but might have limited functionality) */}
+            <Route path="/plan/:id" element={<PlanDetail />} />
+            <Route path="/challenges" element={<Challenges />} />
+            <Route path="/challenges/:id" element={<ChallengeDetail />} />
+            <Route path="/trending" element={<Trending />} />
+            <Route path="/hall-of-fame" element={<HallOfFame />} />
+            <Route path="/miscellaneous" element={<Miscellaneous />} />
+            <Route path="/miscellaneous/:id" element={<MonthlyChallengeDetail />} />
+            <Route path="/user/:id" element={<UserProfile />} />
+            
+            {/* Search & Board Routes */}
+            <Route path="/search" element={<PlanSearch />} />
+            <Route path="/plans" element={<PlanBoard />} />
+            <Route path="/plans/search" element={<PlanSearch />} />
 
-              {/* User & Chat Routes */}
-              <Route path="/user/:id" element={<UserProfile />} />
-              <Route path="/chat/:roomId" element={<ChatPage />} />
-
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </Layout>
-        } />
-      </Routes>
-    </HashRouter>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Layout>
+      } />
+    </Routes>
   );
 }
 
@@ -119,7 +134,9 @@ function App() {
 
   return (
     <AuthProvider>
-      <AppRoutes />
+      <HashRouter>
+        <MainRoutes />
+      </HashRouter>
     </AuthProvider>
   );
 }
