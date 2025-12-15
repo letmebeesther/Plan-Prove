@@ -238,21 +238,48 @@ export function PlanDetail() {
     };
 
     // --- Simulated API Verification ---
-    const handleVerifyApi = () => {
+    const handleVerifyApi = async () => {
         if (!apiRefId) return alert('자격증/성적표 번호를 입력해주세요.');
         setIsVerifyingApi(true);
+        setApiVerifiedData(null); // Reset previous data
         
-        // Simulate Network Request
-        setTimeout(() => {
-            const success = Math.random() > 0.2; // 80% success rate for demo
-            if (success) {
-                setApiVerifiedData(`${apiProvider} 인증 성공 [REF:${apiRefId}]`);
+        try {
+            // 1. Simulate Network Request Delay
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
+            // 2. Simulate API Response
+            // Scenario: 70% chance of being a valid ID (result: true), 30% invalid (result: false)
+            // Even if HTTP Status is 200, business logic might fail.
+            const isBusinessLogicSuccess = Math.random() > 0.3;
+
+            const mockResponse = {
+                status: 200,
+                body: {
+                    result: isBusinessLogicSuccess,
+                    message: isBusinessLogicSuccess ? '인증 성공' : '유효하지 않은 번호입니다. 다시 확인해주세요.',
+                    data: isBusinessLogicSuccess ? { licenseName: apiProvider, issueDate: '2023-05-20' } : null
+                }
+            };
+
+            // 3. Logic: Check HTTP Status AND Body Result
+            if (mockResponse.status === 200) {
+                if (mockResponse.body.result === true) {
+                    // Success Case
+                    setApiVerifiedData(`${apiProvider} 인증 성공 [REF:${apiRefId}]`);
+                } else {
+                    // Failure Case (HTTP 200 but Invalid ID)
+                    alert(`인증 실패: ${mockResponse.body.message}`);
+                    setApiVerifiedData(null);
+                }
             } else {
-                alert('유효하지 않은 번호입니다. 다시 확인해주세요.');
-                setApiVerifiedData(null);
+                alert('시스템 오류: API 서버에 연결할 수 없습니다.');
             }
+        } catch (e) {
+            console.error(e);
+            alert('오류가 발생했습니다.');
+        } finally {
             setIsVerifyingApi(false);
-        }, 1500);
+        }
     };
 
     // --- Validation Logic ---
