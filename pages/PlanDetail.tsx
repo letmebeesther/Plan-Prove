@@ -56,6 +56,12 @@ export function PlanDetail() {
     const [biometricValue, setBiometricValue] = useState('');
     const [isFetchingBio, setIsFetchingBio] = useState(false);
 
+    // API Verification State
+    const [apiProvider, setApiProvider] = useState('Q-Net');
+    const [apiRefId, setApiRefId] = useState('');
+    const [isVerifyingApi, setIsVerifyingApi] = useState(false);
+    const [apiVerifiedData, setApiVerifiedData] = useState<string | null>(null);
+
     // Verification Status UI
     const [verifyStatus, setVerifyStatus] = useState<'IDLE' | 'VERIFYING' | 'SUCCESS' | 'FAIL'>('IDLE');
     const [verifyMessage, setVerifyMessage] = useState('');
@@ -129,6 +135,12 @@ export function PlanDetail() {
         setVerificationCodeInput('');
         setGeneratedCode(null);
         setEmailError(null);
+
+        // Reset API State
+        setApiProvider('Q-Net');
+        setApiRefId('');
+        setIsVerifyingApi(false);
+        setApiVerifiedData(null);
         
         // Reset Verify State
         setVerifyStatus('IDLE');
@@ -223,6 +235,24 @@ export function PlanDetail() {
             setBiometricValue(simulatedValue);
             setIsFetchingBio(false);
         }, 2000);
+    };
+
+    // --- Simulated API Verification ---
+    const handleVerifyApi = () => {
+        if (!apiRefId) return alert('자격증/성적표 번호를 입력해주세요.');
+        setIsVerifyingApi(true);
+        
+        // Simulate Network Request
+        setTimeout(() => {
+            const success = Math.random() > 0.2; // 80% success rate for demo
+            if (success) {
+                setApiVerifiedData(`${apiProvider} 인증 성공 [REF:${apiRefId}]`);
+            } else {
+                alert('유효하지 않은 번호입니다. 다시 확인해주세요.');
+                setApiVerifiedData(null);
+            }
+            setIsVerifyingApi(false);
+        }, 1500);
     };
 
     // --- Validation Logic ---
@@ -351,6 +381,14 @@ export function PlanDetail() {
                 evidenceData.verifiedEmail = certEmail;
                 evidenceData.status = 'APPROVED';
                 evidenceData.credibilityScore = 100;
+                
+            } else if (certType === 'API') {
+                if (!apiVerifiedData) throw new Error('자격증/시험 점수 조회가 필요합니다.');
+                evidenceData.apiProvider = apiProvider;
+                evidenceData.apiReferenceId = apiRefId;
+                evidenceData.content = apiVerifiedData;
+                evidenceData.status = 'APPROVED';
+                evidenceData.credibilityScore = 100;
             }
 
             setVerifyStatus('SUCCESS');
@@ -446,7 +484,7 @@ export function PlanDetail() {
                 <p className="text-gray-600 mb-6 leading-relaxed whitespace-pre-line">{plan.description}</p>
 
                 <div className="flex items-center gap-4 mb-6 pt-4 border-t border-gray-50">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 cursor-pointer hover:opacity-80" onClick={() => navigate(`/user/${plan.author.id}`)}>
                         <Avatar src={plan.author.avatarUrl} size="sm" />
                         <span className="text-sm font-bold text-gray-700">{plan.author.nickname}</span>
                     </div>
@@ -468,10 +506,10 @@ export function PlanDetail() {
             <div className="space-y-4">
                 <h2 className="text-xl font-bold text-gray-900 mb-4 px-2">세부 목표 ({plan.subGoals.length})</h2>
                 {plan.subGoals.map((sg, idx) => {
-                    const latestEvidence = sg.evidences && sg.evidences.length > 0 ? sg.evidences[sg.evidences.length - 1] : null;
-                    const credibilityScore = latestEvidence?.credibilityScore;
                     const dDay = getDDay(sg.dueDate);
                     const hasBiometricEvidence = sg.evidences?.some(e => e.type === 'BIOMETRIC');
+                    const hasEmailEvidence = sg.evidences?.some(e => e.type === 'EMAIL');
+                    const hasApiEvidence = sg.evidences?.some(e => e.type === 'API');
 
                     return (
                         <div key={idx} className={`bg-white rounded-2xl p-5 border transition-all ${sg.status === 'completed' ? 'border-green-200 bg-green-50/30' : 'border-gray-100'}`}>
@@ -487,7 +525,7 @@ export function PlanDetail() {
                                     </div>
                                     
                                     {/* D-Day & Due Date Info */}
-                                    <div className="pl-9 mb-2 flex items-center gap-2 text-xs">
+                                    <div className="pl-9 mb-2 flex items-center gap-2 text-xs flex-wrap">
                                         {dDay && (
                                             <span className={`font-bold px-1.5 py-0.5 rounded ${
                                                 dDay === 'D-Day' ? 'bg-red-100 text-red-600' :
@@ -501,6 +539,11 @@ export function PlanDetail() {
                                                 <Calendar className="w-3 h-3" /> {sg.dueDate}
                                             </span>
                                         )}
+                                        {sg.dueTime && (
+                                            <span className="text-gray-400 flex items-center gap-1 border-l border-gray-200 pl-2 ml-1">
+                                                <Clock className="w-3 h-3" /> {sg.dueTime}
+                                            </span>
+                                        )}
                                     </div>
 
                                     <p className="text-sm text-gray-500 pl-9 mb-3">{sg.description}</p>
@@ -511,15 +554,22 @@ export function PlanDetail() {
                                                 <div className="text-xs text-green-600 font-bold flex items-center gap-1">
                                                     <CheckCircle2 className="w-3 h-3" /> 인증 완료 ({sg.evidences.length})
                                                 </div>
-                                                {credibilityScore && (
-                                                    <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100 flex items-center gap-1">
-                                                        <ShieldCheck className="w-3 h-3" /> 신빙성 {credibilityScore}%
-                                                    </span>
-                                                )}
                                                 {/* Biometric Badge */}
                                                 {hasBiometricEvidence && (
                                                     <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-100 flex items-center gap-1">
                                                         <Activity className="w-3 h-3" /> 생체 데이터 인증
+                                                    </span>
+                                                )}
+                                                {/* Email Badge */}
+                                                {hasEmailEvidence && (
+                                                    <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100 flex items-center gap-1">
+                                                        <Mail className="w-3 h-3" /> 이메일 인증
+                                                    </span>
+                                                )}
+                                                {/* API Badge */}
+                                                {hasApiEvidence && (
+                                                    <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100 flex items-center gap-1">
+                                                        <LinkIcon className="w-3 h-3" /> 자격증 연동
                                                     </span>
                                                 )}
                                             </div>
@@ -528,11 +578,6 @@ export function PlanDetail() {
                                                 {sg.evidences.filter(e => e.type === 'PHOTO').map((e, i) => (
                                                     <div key={i} className="relative w-12 h-12 rounded-lg bg-gray-100 overflow-hidden border border-gray-200 group">
                                                         <img src={e.url} alt="evidence" className="w-full h-full object-cover" />
-                                                        {e.credibilityScore && (
-                                                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                <span className="text-white text-[10px] font-bold">{e.credibilityScore}%</span>
-                                                            </div>
-                                                        )}
                                                     </div>
                                                 ))}
                                             </div>
@@ -743,10 +788,63 @@ export function PlanDetail() {
                             )}
                             
                             {certType === 'API' && (
-                                <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-                                    <LinkIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                                    <p className="text-sm">현재 데모 버전에서는 지원하지 않는 기능입니다.</p>
-                                    <p className="text-xs mt-1">대신 '사진'이나 '글'로 인증해주세요.</p>
+                                <div className="space-y-4">
+                                    <div className="bg-indigo-50 p-3 rounded-lg flex flex-col gap-1 items-start text-xs text-indigo-700">
+                                        <div className="flex gap-2 items-center">
+                                            <LinkIcon className="w-4 h-4 shrink-0" />
+                                            <span className="font-bold">자격증/어학성적 API 연동</span>
+                                        </div>
+                                        <p>공인된 기관의 데이터를 실시간으로 조회하여 인증합니다.</p>
+                                    </div>
+                                    
+                                    {!apiVerifiedData ? (
+                                        <>
+                                            <div className="space-y-2">
+                                                <label className="block text-xs font-bold text-gray-500">발급 기관 선택</label>
+                                                <select 
+                                                    className="w-full rounded-xl border-gray-300 p-2.5 text-sm bg-white border"
+                                                    value={apiProvider}
+                                                    onChange={e => setApiProvider(e.target.value)}
+                                                >
+                                                    <option value="Q-Net">Q-Net (한국산업인력공단)</option>
+                                                    <option value="YBM">YBM (TOEIC/JPT)</option>
+                                                    <option value="Opic">Opic (멀티캠퍼스)</option>
+                                                    <option value="KCCI">대한상공회의소</option>
+                                                </select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Input 
+                                                    label="자격증/성적표 발급 번호"
+                                                    placeholder="1234-5678-ABCD"
+                                                    value={apiRefId}
+                                                    onChange={e => setApiRefId(e.target.value)}
+                                                />
+                                            </div>
+                                            <Button 
+                                                fullWidth 
+                                                onClick={handleVerifyApi} 
+                                                disabled={isVerifyingApi || !apiRefId}
+                                                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                                            >
+                                                {isVerifyingApi ? '기관 조회 중...' : '조회 및 인증'}
+                                            </Button>
+                                        </>
+                                    ) : (
+                                        <div className="bg-white border-2 border-green-100 rounded-xl p-5 text-center shadow-sm relative overflow-hidden">
+                                            <div className="absolute top-0 right-0 bg-green-100 text-green-700 text-[10px] font-bold px-2 py-1 rounded-bl-lg">
+                                                Verified
+                                            </div>
+                                            <CheckCircle2 className="w-8 h-8 text-green-500 mx-auto mb-2" />
+                                            <p className="text-gray-500 text-xs mb-1">인증 성공</p>
+                                            <p className="font-bold text-gray-900 text-sm">{apiVerifiedData}</p>
+                                            <button 
+                                                onClick={() => setApiVerifiedData(null)}
+                                                className="text-xs text-gray-400 underline hover:text-gray-600 mt-2"
+                                            >
+                                                다시 조회하기
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -764,7 +862,7 @@ export function PlanDetail() {
                             </div>
                         )}
 
-                        <Button fullWidth onClick={handleEvidenceSubmit} disabled={submitting || verifyStatus === 'FAIL' || (certType === 'BIOMETRIC' && !biometricValue)}>
+                        <Button fullWidth onClick={handleEvidenceSubmit} disabled={submitting || verifyStatus === 'FAIL' || (certType === 'BIOMETRIC' && !biometricValue) || (certType === 'API' && !apiVerifiedData)}>
                             {submitting ? '처리 중...' : '인증 제출하기'}
                         </Button>
                     </div>

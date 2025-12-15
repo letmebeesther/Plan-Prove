@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
     Users, TrendingUp, Shield, Activity, Target, MessageCircle, Image as ImageIcon, Smile, 
@@ -7,15 +8,16 @@ import {
     ChevronLeft, Share2, Bookmark, Flag, Info, Crown, Search, Filter, X, 
     ChevronDown, ChevronUp, Bell, Copy, CheckCircle2, ThumbsUp, MapPin, 
     Calendar, Maximize2, Camera, UserMinus, MessageSquare, Star, Trophy,
-    Sparkles, ArrowRight, Zap, Flame, Coffee
+    Sparkles, ArrowRight, Zap, Flame, Coffee, ExternalLink
 } from 'lucide-react';
 import { Avatar } from '../components/Avatar';
 import { Button } from '../components/common/Button';
 import { ProgressBar } from '../components/common/ProgressBar';
+import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { Challenge, Participant, ChatMessage, Certification, Notice, ChatRoom, Plan, User } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { subscribeToChat, sendChatMessage } from '../services/chatService';
-import { fetchChallengeById, fetchMyActivePlans, fetchChallengeFeeds, fetchChallengeParticipants, createChatRoom, fetchMyChatRooms, createPlan } from '../services/dbService';
+import { fetchChallengeById, fetchMyActivePlans, fetchChallengeFeeds, fetchChallengeParticipants, createChatRoom, fetchMyChatRooms, createPlan, joinChallenge, leaveChallenge } from '../services/dbService';
 
 type TabType = 'HOME' | 'FEED' | 'CHAT' | 'MEMBERS' | 'CHATLIST';
 
@@ -29,6 +31,12 @@ interface PlanTemplate {
     frequency: string;
     difficulty: 'EASY' | 'MEDIUM' | 'HARD';
 }
+
+const CHALLENGE_ADS = [
+    { id: 'ad1', text: '💪 챌린지 성공을 위한 필수템! 단백질 보충제 특가', link: '#' },
+    { id: 'ad2', text: '📚 독서 챌린지 참여자를 위한 베스트셀러 요약앱 1개월 무료', link: '#' },
+    { id: 'ad3', text: '⏰ 인증 놓치지 않는 스마트 알람 시계 할인', link: '#' }
+];
 
 export function ChallengeDetail() {
   const { id } = useParams<{id: string}>();
@@ -58,6 +66,7 @@ export function ChallengeDetail() {
   const [showNoticeModal, setShowNoticeModal] = useState<Notice | null>(null);
   const [showFullImage, setShowFullImage] = useState<string | null>(null);
   const [showNewChatModal, setShowNewChatModal] = useState(false);
+  const [showMenu, setShowMenu] = useState(false); // Dropdown menu state
 
   // New Chat Selection State
   const [selectedChatUsers, setSelectedChatUsers] = useState<string[]>([]);
@@ -80,6 +89,9 @@ export function ChallengeDetail() {
       const loadData = async () => {
           if (!id) return;
           setLoading(true);
+          // Reset joined state initially to prevent stale state from previous challenge
+          setIsJoined(false); 
+          
           try {
               const data = await fetchChallengeById(id);
               if (data) {
@@ -92,6 +104,8 @@ export function ChallengeDetail() {
                   // Check if joined
                   if (currentUser && data.participantIds?.includes(currentUser.id)) {
                       setIsJoined(true);
+                  } else {
+                      setIsJoined(false);
                   }
 
                   // Generate Mock Recommendations based on challenge title
@@ -183,12 +197,20 @@ export function ChallengeDetail() {
   }, [messages, activeTab]);
 
   // Handlers
-  const handleJoin = (planId?: string) => {
-      if (!planId) return; 
-      setIsJoined(true);
-      setShowJoinModal(false);
-      alert(`도전에 참여했습니다! 🎉`);
-      setActiveTab('HOME'); 
+  const handleJoin = async (planId?: string) => {
+      if (!planId || !currentUser || !id) return; 
+      try {
+          await joinChallenge(id, currentUser.id, planId);
+          setIsJoined(true);
+          setShowJoinModal(false);
+          alert(`도전에 참여했습니다! 🎉`);
+          setActiveTab('HOME'); 
+          // Reload participants
+          const parts = await fetchChallengeParticipants(id);
+          setParticipants(parts);
+      } catch (e) {
+          alert('참여 중 오류가 발생했습니다.');
+      }
   };
 
   const handleCreateAndJoin = async (template: PlanTemplate) => {
@@ -209,9 +231,9 @@ export function ChallengeDetail() {
                       evidenceTypes: ['PHOTO'] 
                   },
                   {
-                      title: '최종 목표 달성',
-                      description: '챌린지 완주하기',
-                      status: 'pending',
+                      title: '최종 목표 달성', 
+                      description: '챌린지 완주하기', 
+                      status: 'pending', 
                       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
                       evidenceTypes: ['PHOTO']
                   }
@@ -227,10 +249,25 @@ export function ChallengeDetail() {
       }
   };
 
-  const handleLeave = () => {
-      setIsJoined(false);
-      setShowLeaveModal(false);
-      navigate('/challenges'); 
+  const handleLeaveClick = () => {
+      setShowMenu(false);
+      setShowLeaveModal(true);
+  };
+
+  const processLeave = async () => {
+      if (!currentUser || !id) return;
+      
+      try {
+          await leaveChallenge(id, currentUser.id);
+          setIsJoined(false);
+          setShowLeaveModal(false);
+          alert("도전을 그만두었습니다.");
+          // Reload participants
+          const parts = await fetchChallengeParticipants(id);
+          setParticipants(parts);
+      } catch (e) {
+          alert('오류가 발생했습니다.');
+      }
   };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
@@ -315,7 +352,7 @@ export function ChallengeDetail() {
   if (!challenge) return <div className="p-20 text-center">도전방을 찾을 수 없습니다.</div>;
 
   return (
-    <div className="pb-20 max-w-5xl mx-auto bg-gray-50 min-h-screen animate-fade-in">
+    <div className="pb-24 max-w-5xl mx-auto bg-gray-50 min-h-screen animate-fade-in relative">
         {/* Header & Sticky Stats */}
         <div className="relative h-64 md:h-80 bg-gray-900 group">
             <img 
@@ -327,6 +364,31 @@ export function ChallengeDetail() {
             <div className="absolute top-4 right-4 flex gap-2">
                 <button onClick={handleCopyLink} className="p-2 bg-black/30 backdrop-blur-md rounded-full text-white hover:bg-black/50 transition-colors"><Share2 className="w-5 h-5" /></button>
                 <button onClick={() => setIsBookmarked(!isBookmarked)} className="p-2 bg-black/30 backdrop-blur-md rounded-full text-white hover:bg-black/50 transition-colors"><Bookmark className={`w-5 h-5 ${isBookmarked ? 'fill-yellow-400 text-yellow-400' : ''}`} /></button>
+                
+                {/* NEW: More Menu for Leave Action (Changed from CSS hover to State click) */}
+                {isJoined && (
+                    <div className="relative">
+                        <button 
+                            onClick={() => setShowMenu(!showMenu)} 
+                            className="p-2 bg-black/30 backdrop-blur-md rounded-full text-white hover:bg-black/50 transition-colors"
+                        >
+                            <MoreHorizontal className="w-5 h-5" />
+                        </button>
+                        {showMenu && (
+                            <>
+                                <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)}></div>
+                                <div className="absolute right-0 top-full mt-2 w-40 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-50 animate-fade-in">
+                                    <button 
+                                        onClick={handleLeaveClick}
+                                        className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 font-bold flex items-center gap-2"
+                                    >
+                                        <LogOut className="w-4 h-4" /> 도전 그만두기
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                )}
             </div>
             <div className="absolute bottom-0 left-0 p-6 md:p-8 w-full text-white">
                 <div className="flex items-center gap-2 mb-2">
@@ -343,6 +405,13 @@ export function ChallengeDetail() {
                         <span className="text-white/50">|</span>
                         <div className="flex items-center gap-1"><Users className="w-4 h-4" /> {challenge.participantCount.toLocaleString()}명</div>
                     </div>
+                    
+                    {/* Status Badge if Joined */}
+                    {isJoined && (
+                        <div className="flex items-center gap-2 bg-green-500/20 backdrop-blur-md border border-green-500/30 px-4 py-1.5 rounded-full text-green-400 font-bold text-sm shadow-lg">
+                            <CheckCircle2 className="w-4 h-4" /> 참여 중
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
@@ -374,11 +443,10 @@ export function ChallengeDetail() {
 
         {/* Content Area */}
         <div className="p-4 md:p-6 min-h-[500px]">
-            
             {/* 1. HOME TAB */}
             {activeTab === 'HOME' && (
                 <div className="space-y-6 animate-fade-in">
-                    {/* Updated Dashboard: Removed Stability Index */}
+                    {/* Stats */}
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                          {[
                              { label: '그룹 성장률', value: `+${challenge.growthRate || 0}%`, icon: TrendingUp, color: 'text-green-600' },
@@ -399,62 +467,74 @@ export function ChallengeDetail() {
                         <h3 className="font-bold text-lg mb-4">도전 소개</h3>
                         <p className="text-gray-700 leading-relaxed whitespace-pre-line">{challenge.description}</p>
                     </div>
-                    
-                    {!isJoined && (
-                        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 flex justify-center z-30 lg:relative lg:border-none lg:bg-transparent lg:p-0">
-                             <Button size="lg" className="w-full max-w-md shadow-xl flex items-center justify-center gap-2" onClick={() => setShowJoinModal(true)}>
-                                 <UserPlus className="w-5 h-5" /> 이 도전방 참여하기
-                             </Button>
-                        </div>
-                    )}
                 </div>
             )}
 
-            {/* 2. FEED TAB - Thread Style */}
+            {/* 2. FEED TAB */}
             {activeTab === 'FEED' && (
                 <div className="space-y-6 animate-fade-in max-w-2xl mx-auto">
-                    {feeds.length > 0 ? feeds.map(feed => (
-                        <div key={feed.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-all">
-                            {/* Feed Header */}
-                            <div className="p-4 flex items-center justify-between border-b border-gray-50">
-                                <div className="flex items-center gap-3">
-                                    <Avatar src={feed.user.avatarUrl} size="md" border />
-                                    <div>
-                                        <div className="flex items-center gap-1">
-                                            <p className="text-sm font-bold text-gray-900">{feed.user.nickname}</p>
-                                            <span className="text-gray-300">•</span>
-                                            <p className="text-xs text-gray-400">{feed.createdAt}</p>
+                    {feeds.length > 0 ? feeds.map((feed, index) => {
+                        const showAd = (index + 1) % 3 === 0;
+                        const adIndex = Math.floor((index + 1) / 3) - 1;
+                        const ad = CHALLENGE_ADS[adIndex % CHALLENGE_ADS.length];
+
+                        return (
+                            <React.Fragment key={feed.id}>
+                                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-all">
+                                    <div className="p-4 flex items-center justify-between border-b border-gray-50">
+                                        <div className="flex items-center gap-3">
+                                            <div onClick={(e) => { e.stopPropagation(); navigate(`/user/${feed.user.id}`) }} className="cursor-pointer">
+                                                <Avatar src={feed.user.avatarUrl} size="md" border />
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-1">
+                                                    <p 
+                                                        className="text-sm font-bold text-gray-900 cursor-pointer hover:underline"
+                                                        onClick={(e) => { e.stopPropagation(); navigate(`/user/${feed.user.id}`) }}
+                                                    >
+                                                        {feed.user.nickname}
+                                                    </p>
+                                                    <span className="text-gray-300">•</span>
+                                                    <p className="text-xs text-gray-400">{feed.createdAt}</p>
+                                                </div>
+                                                <p className="text-xs text-primary-600 font-medium">{feed.relatedGoalTitle}</p>
+                                            </div>
                                         </div>
-                                        <p className="text-xs text-primary-600 font-medium">{feed.relatedGoalTitle}</p>
+                                        <button className="text-gray-300 hover:text-gray-600 p-1">
+                                            <MoreHorizontal className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                    {feed.imageUrl && (
+                                        <div className="w-full bg-gray-100 cursor-pointer" onClick={() => setShowFullImage(feed.imageUrl)}>
+                                            <img src={feed.imageUrl} alt="cert" className="w-full h-auto object-cover max-h-[500px]" />
+                                        </div>
+                                    )}
+                                    <div className="p-4">
+                                        <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-line mb-3">{feed.description}</p>
+                                        <div className="flex items-center gap-4 pt-3 border-t border-gray-50">
+                                            <button className="flex items-center gap-1.5 text-gray-500 hover:text-red-500 transition-colors text-sm font-medium">
+                                                <Flame className="w-5 h-5" /> {feed.likes}
+                                            </button>
+                                            <button className="flex items-center gap-1.5 text-gray-500 hover:text-blue-500 transition-colors text-sm font-medium">
+                                                <MessageCircle className="w-5 h-5" /> {feed.comments}
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
-                                <button className="text-gray-300 hover:text-gray-600 p-1">
-                                    <MoreHorizontal className="w-5 h-5" />
-                                </button>
-                            </div>
-
-                            {/* Feed Content */}
-                            {feed.imageUrl && (
-                                <div className="w-full bg-gray-100 cursor-pointer" onClick={() => setShowFullImage(feed.imageUrl)}>
-                                    <img src={feed.imageUrl} alt="cert" className="w-full h-auto object-cover max-h-[500px]" />
-                                </div>
-                            )}
-                            
-                            <div className="p-4">
-                                <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-line mb-3">{feed.description}</p>
-                                
-                                {/* Actions */}
-                                <div className="flex items-center gap-4 pt-3 border-t border-gray-50">
-                                    <button className="flex items-center gap-1.5 text-gray-500 hover:text-red-500 transition-colors text-sm font-medium">
-                                        <Flame className="w-5 h-5" /> {feed.likes}
-                                    </button>
-                                    <button className="flex items-center gap-1.5 text-gray-500 hover:text-blue-500 transition-colors text-sm font-medium">
-                                        <MessageCircle className="w-5 h-5" /> {feed.comments}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    )) : (
+                                {showAd && (
+                                    <div className="rounded-xl bg-gray-50 border border-gray-100 py-3 px-4 flex items-center justify-between group cursor-pointer hover:bg-gray-100 transition-all mb-4">
+                                        <div className="flex items-center gap-3 overflow-hidden">
+                                            <span className="flex-shrink-0 text-[10px] font-bold text-gray-400 border border-gray-300 px-1.5 py-0.5 rounded">AD</span>
+                                            <span className="text-xs text-gray-600 truncate font-medium group-hover:text-primary-600 transition-colors">
+                                                {ad.text}
+                                            </span>
+                                        </div>
+                                        <ExternalLink className="w-3 h-3 text-gray-400 flex-shrink-0 group-hover:text-primary-500" />
+                                    </div>
+                                )}
+                            </React.Fragment>
+                        );
+                    }) : (
                         <div className="text-center py-20 text-gray-400 bg-white rounded-2xl border border-dashed border-gray-200">
                             <Camera className="w-12 h-12 mx-auto mb-3 opacity-30" />
                             <p className="text-sm font-medium">아직 등록된 인증 피드가 없습니다.</p>
@@ -469,17 +549,21 @@ export function ChallengeDetail() {
                 <div className="bg-white rounded-2xl border border-gray-200 shadow-sm h-[600px] flex flex-col animate-fade-in relative">
                     {!isJoined && <div className="absolute inset-0 bg-white/60 backdrop-blur-sm z-10 flex flex-col items-center justify-center p-6 text-center"><Lock className="w-10 h-10 text-gray-400 mb-2" /><p className="font-bold">참여자만 입장 가능합니다.</p><Button onClick={() => setShowJoinModal(true)}>참여하기</Button></div>}
                     <div className="p-3 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-2xl">
-                         <span className="font-bold text-gray-700 text-sm flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div> 오픈 채팅방</span>
+                        <span className="font-bold text-gray-700 text-sm flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div> 오픈 채팅방</span>
                     </div>
                     <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={chatScrollRef}>
-                         {messages.map(msg => (
-                             <div key={msg.id} className={`flex gap-3 ${msg.user.id === currentUser?.id ? 'flex-row-reverse' : ''}`}>
-                                 {msg.user.id !== currentUser?.id && <Avatar src={msg.user.avatarUrl} size="sm" />}
-                                 <div className={`max-w-[70%] flex flex-col ${msg.user.id === currentUser?.id ? 'items-end' : 'items-start'}`}>
-                                     <div className={`p-3 rounded-2xl text-sm ${msg.user.id === currentUser?.id ? 'bg-primary-500 text-white rounded-tr-none' : 'bg-gray-100 text-gray-800 rounded-tl-none'}`}>{msg.content}</div>
-                                 </div>
-                             </div>
-                         ))}
+                        {messages.map(msg => (
+                            <div key={msg.id} className={`flex gap-3 ${msg.user.id === currentUser?.id ? 'flex-row-reverse' : ''}`}>
+                                {msg.user.id !== currentUser?.id && (
+                                    <div onClick={() => navigate(`/user/${msg.user.id}`)} className="cursor-pointer">
+                                        <Avatar src={msg.user.avatarUrl} size="sm" />
+                                    </div>
+                                )}
+                                <div className={`max-w-[70%] flex flex-col ${msg.user.id === currentUser?.id ? 'items-end' : 'items-start'}`}>
+                                    <div className={`p-3 rounded-2xl text-sm ${msg.user.id === currentUser?.id ? 'bg-primary-500 text-white rounded-tr-none' : 'bg-gray-100 text-gray-800 rounded-tl-none'}`}>{msg.content}</div>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                     <div className="p-3 border-t border-gray-100 bg-white rounded-b-2xl">
                         <form onSubmit={handleSendMessage} className="flex gap-2">
@@ -499,7 +583,6 @@ export function ChallengeDetail() {
                             <MessageSquare className="w-4 h-4" /> 새 채팅
                         </button>
                     </div>
-                    
                     {myChatRooms.length > 0 ? myChatRooms.map(room => (
                         <div key={room.id} onClick={() => navigate(`/chat/${room.id}`)} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm hover:bg-gray-50 cursor-pointer flex items-center gap-4 transition-colors">
                             <div className="relative">
@@ -523,16 +606,14 @@ export function ChallengeDetail() {
                 </div>
             )}
 
-            {/* 5. MEMBERS TAB (Updated) */}
+            {/* 5. MEMBERS TAB */}
             {activeTab === 'MEMBERS' && (
-                 <div className="space-y-4 animate-fade-in">
+                <div className="space-y-4 animate-fade-in">
                     <div className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
                         <div className="relative flex-1">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                             <input type="text" placeholder="멤버 검색" value={memberSearch} onChange={(e) => setMemberSearch(e.target.value)} className="w-full pl-10 pr-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none" />
                         </div>
-                        
-                        {/* Sorting Buttons */}
                         <div className="flex gap-2">
                             {[
                                 { id: 'ACHIEVEMENT', label: '목표 달성률', icon: Target },
@@ -560,14 +641,7 @@ export function ChallengeDetail() {
                             <div 
                                 key={member.user.id} 
                                 className="p-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer transition-colors group"
-                                onClick={() => {
-                                    // Navigate to the member's plan details if available, else fallback to profile
-                                    if (member.connectedGoalId) {
-                                        navigate(`/plan/${member.connectedGoalId}`);
-                                    } else {
-                                        navigate(`/user/${member.user.id}`);
-                                    }
-                                }}
+                                onClick={() => navigate(`/user/${member.user.id}`)}
                             >
                                 <div className="flex items-center gap-3">
                                     <div className="flex items-center justify-center w-6 text-sm font-bold text-gray-400">
@@ -583,8 +657,15 @@ export function ChallengeDetail() {
                                             {member.role === 'HOST' && <span className="text-[10px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded font-bold">방장</span>}
                                         </div>
                                         <div className="flex items-center gap-2 text-xs text-gray-500">
-                                            <span className="truncate max-w-[120px]">{member.connectedGoalTitle}</span>
-                                            {/* Show relevant stat based on sort */}
+                                            <span 
+                                                className="truncate max-w-[120px] hover:text-primary-600 hover:underline z-10 cursor-pointer"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (member.connectedGoalId) navigate(`/plan/${member.connectedGoalId}`);
+                                                }}
+                                            >
+                                                {member.connectedGoalTitle}
+                                            </span>
                                             {memberSort === 'ACHIEVEMENT' && <span className="text-blue-600 font-bold">달성 {member.achievementRate}%</span>}
                                             {memberSort === 'GROWTH' && <span className="text-green-600 font-bold">성장 +{member.growthRate}%</span>}
                                         </div>
@@ -600,101 +681,122 @@ export function ChallengeDetail() {
                         ))}
                         {participants.length === 0 && <div className="p-8 text-center text-gray-400">참여자가 없습니다.</div>}
                     </div>
-                 </div>
+                </div>
             )}
         </div>
 
-        {/* --- Join Modal (Updated) --- */}
-        {showJoinModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-fade-in backdrop-blur-sm">
-                <div className="bg-white rounded-3xl max-w-lg w-full p-0 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-                    <div className="p-6 bg-gradient-to-r from-indigo-600 to-violet-600 text-white">
-                        <div className="flex justify-between items-start mb-2">
-                            <h3 className="text-2xl font-bold">도전 참여하기</h3>
-                            <button onClick={() => setShowJoinModal(false)} className="bg-white/20 p-1.5 rounded-full hover:bg-white/30 transition-colors"><X className="w-5 h-5" /></button>
-                        </div>
-                        <p className="text-indigo-100 text-sm">함께하면 더 멀리 갈 수 있습니다. 나만의 계획을 세워보세요.</p>
+        {/* Global Portals for Fixed Elements */}
+        {createPortal(
+            <>
+                {/* 1. Global Join Button (Fixed at Bottom, outside regular layout flow) */}
+                {!isJoined && (
+                    <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 flex justify-center z-[100] shadow-[0_-4px_20px_rgba(0,0,0,0.15)] lg:pl-64 animate-fade-in">
+                         <Button size="lg" className="w-full max-w-md shadow-xl flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-700 text-white transform hover:scale-[1.02] transition-transform" onClick={() => setShowJoinModal(true)}>
+                             <UserPlus className="w-5 h-5" /> 이 도전방 참여하기
+                         </Button>
                     </div>
+                )}
 
-                    <div className="overflow-y-auto p-6 space-y-8">
-                        {/* Section 1: AI Recommended Plans */}
-                        <div>
-                            <h4 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
-                                <Sparkles className="w-4 h-4 text-violet-600" /> AI 추천 맞춤 플랜
-                            </h4>
-                            <div className="grid gap-3">
-                                {recommendedPlans.map(template => (
-                                    <div 
-                                        key={template.id} 
-                                        onClick={() => handleCreateAndJoin(template)}
-                                        className="border border-gray-200 rounded-2xl p-4 cursor-pointer hover:border-violet-500 hover:shadow-lg transition-all group relative overflow-hidden"
-                                    >
-                                        <div className="flex items-start gap-4">
-                                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${template.color}`}>
-                                                <template.icon className="w-6 h-6" />
-                                            </div>
-                                            <div className="flex-1">
-                                                <div className="flex justify-between items-center mb-1">
-                                                    <h5 className="font-bold text-gray-900 group-hover:text-violet-600 transition-colors">{template.name}</h5>
-                                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${template.difficulty === 'HARD' ? 'bg-red-100 text-red-600' : template.difficulty === 'MEDIUM' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'}`}>
-                                                        {template.difficulty}
-                                                    </span>
+                {/* 2. Join Modal */}
+                {showJoinModal && (
+                    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 p-4 animate-fade-in backdrop-blur-sm">
+                        <div className="bg-white rounded-3xl max-w-lg w-full p-0 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                            <div className="p-6 bg-gradient-to-r from-indigo-600 to-violet-600 text-white">
+                                <div className="flex justify-between items-start mb-2">
+                                    <h3 className="text-2xl font-bold">도전 참여하기</h3>
+                                    <button onClick={() => setShowJoinModal(false)} className="bg-white/20 p-1.5 rounded-full hover:bg-white/30 transition-colors"><X className="w-5 h-5" /></button>
+                                </div>
+                                <p className="text-indigo-100 text-sm">함께하면 더 멀리 갈 수 있습니다. 나만의 계획을 세워보세요.</p>
+                            </div>
+
+                            <div className="overflow-y-auto p-6 space-y-8">
+                                <div>
+                                    <h4 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
+                                        <Sparkles className="w-4 h-4 text-violet-600" /> AI 추천 맞춤 플랜
+                                    </h4>
+                                    <div className="grid gap-3">
+                                        {recommendedPlans.map(template => (
+                                            <div 
+                                                key={template.id} 
+                                                onClick={() => handleCreateAndJoin(template)}
+                                                className="border border-gray-200 rounded-2xl p-4 cursor-pointer hover:border-violet-500 hover:shadow-lg transition-all group relative overflow-hidden"
+                                            >
+                                                <div className="flex items-start gap-4">
+                                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${template.color}`}>
+                                                        <template.icon className="w-6 h-6" />
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <div className="flex justify-between items-center mb-1">
+                                                            <h5 className="font-bold text-gray-900 group-hover:text-violet-600 transition-colors">{template.name}</h5>
+                                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${template.difficulty === 'HARD' ? 'bg-red-100 text-red-600' : template.difficulty === 'MEDIUM' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'}`}>
+                                                                {template.difficulty}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-xs text-gray-500 mb-2">{template.description}</p>
+                                                        <div className="text-xs font-bold text-gray-700 bg-gray-50 px-2 py-1 rounded inline-block">
+                                                            {template.frequency}
+                                                        </div>
+                                                    </div>
+                                                    <div className="self-center">
+                                                        <ArrowRight className="w-5 h-5 text-gray-300 group-hover:text-violet-500 group-hover:translate-x-1 transition-all" />
+                                                    </div>
                                                 </div>
-                                                <p className="text-xs text-gray-500 mb-2">{template.description}</p>
-                                                <div className="text-xs font-bold text-gray-700 bg-gray-50 px-2 py-1 rounded inline-block">
-                                                    {template.frequency}
-                                                </div>
                                             </div>
-                                            <div className="self-center">
-                                                <ArrowRight className="w-5 h-5 text-gray-300 group-hover:text-violet-500 group-hover:translate-x-1 transition-all" />
-                                            </div>
-                                        </div>
+                                        ))}
                                     </div>
-                                ))}
+                                </div>
+
+                                <div className="relative">
+                                    <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"></div></div>
+                                    <div className="relative flex justify-center text-sm"><span className="px-2 bg-white text-gray-500 font-medium">또는</span></div>
+                                </div>
+
+                                <div>
+                                    <h4 className="font-bold text-gray-900 mb-3 text-sm">기존 계획으로 참여</h4>
+                                    <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                                        {myPlans.length > 0 ? myPlans.map(plan => (
+                                            <div key={plan.id} className="p-3 border border-gray-200 rounded-xl hover:border-primary-500 cursor-pointer hover:bg-primary-50 transition-colors flex justify-between items-center" onClick={() => handleJoin(plan.id)}>
+                                                <div>
+                                                    <p className="font-bold text-gray-900 text-sm">{plan.title}</p>
+                                                    <p className="text-xs text-gray-500">{plan.category} • {plan.progress}%</p>
+                                                </div>
+                                                <ArrowRight className="w-4 h-4 text-gray-300" />
+                                            </div>
+                                        )) : (<div className="text-center py-3 text-gray-400 text-xs border border-dashed border-gray-200 rounded-xl">진행 중인 계획이 없습니다.</div>)}
+                                    </div>
+                                </div>
+
+                                <button 
+                                    onClick={() => navigate('/new-plan')}
+                                    className="w-full py-4 border-2 border-dashed border-gray-300 rounded-xl text-gray-500 font-bold hover:border-gray-400 hover:bg-gray-50 transition-all flex items-center justify-center gap-2"
+                                >
+                                    <UserPlus className="w-5 h-5" />
+                                    새로운 계획 직접 만들기
+                                </button>
                             </div>
                         </div>
-
-                        <div className="relative">
-                            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"></div></div>
-                            <div className="relative flex justify-center text-sm"><span className="px-2 bg-white text-gray-500 font-medium">또는</span></div>
-                        </div>
-
-                        {/* Section 2: Existing Plans */}
-                        <div>
-                            <h4 className="font-bold text-gray-900 mb-3 text-sm">기존 계획으로 참여</h4>
-                            <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
-                                {myPlans.length > 0 ? myPlans.map(plan => (
-                                    <div key={plan.id} className="p-3 border border-gray-200 rounded-xl hover:border-primary-500 cursor-pointer hover:bg-primary-50 transition-colors flex justify-between items-center" onClick={() => handleJoin(plan.id)}>
-                                        <div>
-                                            <p className="font-bold text-gray-900 text-sm">{plan.title}</p>
-                                            <p className="text-xs text-gray-500">{plan.category} • {plan.progress}%</p>
-                                        </div>
-                                        <ArrowRight className="w-4 h-4 text-gray-300" />
-                                    </div>
-                                )) : (<div className="text-center py-3 text-gray-400 text-xs border border-dashed border-gray-200 rounded-xl">진행 중인 계획이 없습니다.</div>)}
-                            </div>
-                        </div>
-
-                        {/* Section 3: Create New */}
-                        <button 
-                            onClick={() => navigate('/new-plan')}
-                            className="w-full py-4 border-2 border-dashed border-gray-300 rounded-xl text-gray-500 font-bold hover:border-gray-400 hover:bg-gray-50 transition-all flex items-center justify-center gap-2"
-                        >
-                            <UserPlus className="w-5 h-5" />
-                            새로운 계획 직접 만들기
-                        </button>
                     </div>
-                </div>
-            </div>
-        )}
+                )}
 
-        {/* ... (Other Modals) ... */}
-        {/* Full Image Modal */}
-        {showFullImage && (
-            <div className="fixed inset-0 z-[60] bg-black flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowFullImage(null)}>
-                <img src={showFullImage} alt="Full view" className="max-w-full max-h-full object-contain rounded-lg" />
-                <button className="absolute top-4 right-4 text-white p-2 bg-white/20 rounded-full hover:bg-white/30"><X className="w-6 h-6" /></button>
-            </div>
+                {/* 3. Full Image Modal */}
+                {showFullImage && (
+                    <div className="fixed inset-0 z-[120] bg-black flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowFullImage(null)}>
+                        <img src={showFullImage} alt="Full view" className="max-w-full max-h-full object-contain rounded-lg" />
+                        <button className="absolute top-4 right-4 text-white p-2 bg-white/20 rounded-full hover:bg-white/30"><X className="w-6 h-6" /></button>
+                    </div>
+                )}
+
+                <ConfirmDialog 
+                    isOpen={showLeaveModal}
+                    title="도전 그만두기"
+                    message="정말로 도전을 그만두시겠습니까? 그동안의 기록은 유지되지만 멤버 목록에서 제외됩니다."
+                    onConfirm={processLeave}
+                    onCancel={() => setShowLeaveModal(false)}
+                    isDangerous
+                    confirmLabel="그만두기"
+                />
+            </>,
+            document.body
         )}
     </div>
   );

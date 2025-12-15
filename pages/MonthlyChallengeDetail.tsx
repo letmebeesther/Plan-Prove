@@ -1,5 +1,6 @@
+
 import React, { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Calendar, Users, Zap, Image as ImageIcon, MessageCircle, Heart, Bookmark, Flag, MoreHorizontal, Send, Star, X, ChevronRight, ExternalLink, RefreshCw, CheckCircle2, ThumbsUp, ThumbsDown, Camera, Type as TypeIcon, CheckSquare, History, Trophy } from 'lucide-react';
 import { Avatar } from '../components/Avatar';
 import { Button } from '../components/common/Button';
@@ -107,6 +108,7 @@ const initialPosts: ForumPost[] = [
 
 export function MonthlyChallengeDetail() {
   const { id } = useParams<{id: string}>();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'POPULAR' | 'RECENT'>('POPULAR');
   const [newPostContent, setNewPostContent] = useState('');
   
@@ -450,10 +452,17 @@ export function MonthlyChallengeDetail() {
                                 {/* Header */}
                                 <div className="flex items-center justify-between mb-4">
                                     <div className="flex items-center gap-3">
-                                        <Avatar src={post.author.avatarUrl} size="md" />
+                                        <div onClick={() => navigate(`/user/${post.author.id}`)} className="cursor-pointer">
+                                            <Avatar src={post.author.avatarUrl} size="md" />
+                                        </div>
                                         <div>
                                             <div className="flex items-center gap-1.5">
-                                                <span className="font-bold text-gray-900 text-sm">{post.author.nickname}</span>
+                                                <span 
+                                                    className="font-bold text-gray-900 text-sm cursor-pointer hover:underline"
+                                                    onClick={() => navigate(`/user/${post.author.id}`)}
+                                                >
+                                                    {post.author.nickname}
+                                                </span>
                                                 {post.isPopular && (
                                                     <span className="px-1.5 py-0.5 bg-red-50 text-red-600 text-[10px] font-bold rounded flex items-center gap-0.5">
                                                         <Star className="w-3 h-3 fill-current" /> 인기

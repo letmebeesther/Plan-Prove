@@ -142,9 +142,9 @@ export function Challenges() {
                     <div 
                         key={challenge.id} 
                         onClick={() => navigate(`/challenges/${challenge.id}`)}
-                        className="group bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer"
+                        className="group bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer flex flex-col h-full"
                     >
-                        <div className="h-40 overflow-hidden relative">
+                        <div className="h-40 overflow-hidden relative flex-shrink-0">
                             <img src={challenge.imageUrl} alt={challenge.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                             <div className="absolute top-3 left-3 px-2 py-1 bg-black/50 backdrop-blur-md rounded-lg text-white text-xs font-bold">
                                 {challenge.category}
@@ -157,7 +157,7 @@ export function Challenges() {
                                 </div>
                             )}
                         </div>
-                        <div className="p-5">
+                        <div className="p-5 flex flex-col flex-1">
                             <h3 className="font-bold text-gray-900 text-lg mb-1 truncate">{challenge.title}</h3>
                             <p className="text-sm text-gray-500 line-clamp-2 mb-4 h-10">{challenge.description}</p>
                             

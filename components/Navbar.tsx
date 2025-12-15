@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Search, Bell, Menu, Flame } from 'lucide-react';
 import { Avatar } from './Avatar';
@@ -25,10 +26,10 @@ export function Navbar({ onMenuClick }: NavbarProps) {
             </button>
             <div
               onClick={() => navigate('/')}
-              className="flex items-center gap-1.5 cursor-pointer group"
+              className="flex items-center gap-2 cursor-pointer group"
             >
-              <div className="flex items-center justify-center w-8 h-8 rounded-xl transition-transform group-hover:scale-110">
-                <Flame className="w-7 h-7 text-primary-500 fill-primary-500" />
+              <div className="bg-primary-50 p-1.5 rounded-lg group-hover:bg-primary-100 transition-colors">
+                <Flame className="w-6 h-6 text-primary-600 fill-primary-600" />
               </div>
               <span className="text-gray-900 font-bold hidden sm:block text-xl tracking-tight group-hover:text-primary-600 transition-colors">Plan & Prove</span>
             </div>

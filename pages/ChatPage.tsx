@@ -89,7 +89,11 @@ export function ChatPage() {
                     const isMe = msg.user.id === currentUser?.id;
                     return (
                         <div key={msg.id} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''}`}>
-                            {!isMe && <Avatar src={msg.user.avatarUrl} size="sm" />}
+                            {!isMe && (
+                                <div onClick={() => navigate(`/user/${msg.user.id}`)} className="cursor-pointer">
+                                    <Avatar src={msg.user.avatarUrl} size="sm" />
+                                </div>
+                            )}
                             <div className={`max-w-[70%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                                 {!isMe && <span className="text-xs text-gray-500 mb-1 ml-1">{msg.user.nickname}</span>}
                                 <div className={`px-4 py-2 rounded-2xl text-sm break-all ${

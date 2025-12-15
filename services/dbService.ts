@@ -2,9 +2,10 @@
 import { 
     collection, doc, getDoc, getDocs, setDoc, updateDoc, addDoc, deleteDoc, 
     query, where, orderBy, limit, startAfter, arrayUnion, arrayRemove, 
-    serverTimestamp, writeBatch, Timestamp, DocumentData
+    serverTimestamp, writeBatch, Timestamp, DocumentData, increment
 } from "firebase/firestore";
-import { db } from "./firebase";
+import { db, rtdb } from "./firebase";
+import { ref, push, set as rtdbSet } from "firebase/database";
 import { 
     User, Plan, Challenge, SubGoal, Evidence, Participant, ChatRoom, 
     Certification, ScrapItem, Notice 
@@ -250,6 +251,30 @@ export const createChallenge = async (data: any): Promise<string> => {
     return docRef.id;
 };
 
+export const joinChallenge = async (challengeId: string, uid: string, planId?: string) => {
+    const ref = doc(db, "challenges", challengeId);
+    await updateDoc(ref, {
+        participantIds: arrayUnion(uid),
+        participantCount: increment(1)
+    });
+    
+    // If a plan was created/selected for this challenge, link it
+    if (planId) {
+        const planRef = doc(db, "plans", planId);
+        await updateDoc(planRef, {
+            challengeId: challengeId
+        });
+    }
+};
+
+export const leaveChallenge = async (challengeId: string, uid: string) => {
+    const ref = doc(db, "challenges", challengeId);
+    await updateDoc(ref, {
+        participantIds: arrayRemove(uid),
+        participantCount: increment(-1)
+    });
+};
+
 export const fetchChallenges = async (): Promise<Challenge[]> => {
     try {
         const q = query(collection(db, "challenges"), orderBy("createdAt", "desc"), limit(20));
@@ -285,19 +310,34 @@ export const fetchChallengeParticipants = async (challengeId: string): Promise<P
     const challenge = await fetchChallengeById(challengeId);
     if (!challenge || !challenge.participantIds) return [];
 
+    // Fetch all plans linked to this challenge to map them to users
+    // This allows finding the specific plan a user created for this challenge
+    let planMap = new Map<string, { id: string, title: string }>();
+    try {
+        const plansQ = query(collection(db, "plans"), where("challengeId", "==", challengeId));
+        const plansSnap = await getDocs(plansQ);
+        plansSnap.forEach(doc => {
+            const data = doc.data();
+            planMap.set(data.authorId, { id: doc.id, title: data.title });
+        });
+    } catch (e) {
+        console.warn("Could not fetch linked plans for challenge participants", e);
+    }
+
     const participants: Participant[] = [];
     const ids = challenge.participantIds.slice(0, 20); 
     
     for (const uid of ids) {
         const user = await fetchUser(uid);
         if (user) {
+            const linkedPlan = planMap.get(uid);
             participants.push({
                 user,
                 role: uid === challenge.host.id ? 'HOST' : 'MEMBER',
-                achievementRate: Math.floor(Math.random() * 100),
+                achievementRate: Math.floor(Math.random() * 100), // In real app, calculate from plan
                 growthRate: Math.floor(Math.random() * 20),
-                connectedGoalTitle: `${challenge.title} 도전!`, 
-                connectedGoalId: `mock-plan-${uid}`, 
+                connectedGoalTitle: linkedPlan ? linkedPlan.title : `${challenge.title} 도전!`, 
+                connectedGoalId: linkedPlan ? linkedPlan.id : undefined, 
                 joinedAt: '2023-10-01',
                 lastCertifiedAt: '1일 전',
                 trustScore: user.trustScore
@@ -359,7 +399,21 @@ export const fetchPopularFeeds = async (): Promise<HomeFeedItem[]> => {
 };
 
 export const fetchChallengeFeeds = async (challengeId: string): Promise<Certification[]> => {
-    return [];
+    try {
+        // Since we may not have a composite index for challengeId + createdAt,
+        // we'll fetch by challengeId and sort in memory for the demo.
+        const q = query(collection(db, "feeds"), where("challengeId", "==", challengeId));
+        const snap = await getDocs(q);
+        const feeds = snap.docs.map(d => snapToData<Certification>(d));
+        
+        // Sort by createdAt desc
+        feeds.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        
+        return feeds;
+    } catch (e) {
+        console.error("Error fetching challenge feeds:", e);
+        return [];
+    }
 };
 
 // --- Hall of Fame ---
@@ -379,6 +433,7 @@ export const fetchHallOfFame = async (type: string): Promise<any[]> => {
             rank: idx + 1,
             title: p.title,
             authorName: p.author.nickname,
+            authorId: p.author.id, // Include author ID for linking
             avatarUrl: p.author.avatarUrl,
             score: (p.likes || 0) * 10 + (p.progress || 0),
             category: p.category,
@@ -484,7 +539,28 @@ export const seedDatabase = async (uid: string) => {
     const batch = writeBatch(db);
     const now = new Date();
 
-    // 1. Create Active Plans (5 items)
+    // 0. Create Mock Users (for Members, Chat, Feeds)
+    const mockUsers = [
+        { id: 'mock-1', nickname: '새벽러너', avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=mock1', trustScore: 88, email: 'mock1@test.com' },
+        { id: 'mock-2', nickname: '독서왕', avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=mock2', trustScore: 95, email: 'mock2@test.com' },
+        { id: 'mock-3', nickname: '코딩도사', avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=mock3', trustScore: 72, email: 'mock3@test.com' },
+        { id: 'mock-4', nickname: '건강지킴이', avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=mock4', trustScore: 65, email: 'mock4@test.com' },
+        { id: 'mock-5', nickname: '열정만수르', avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=mock5', trustScore: 99, email: 'mock5@test.com' },
+    ];
+
+    for (const mUser of mockUsers) {
+        const uRef = doc(db, 'users', mUser.id);
+        batch.set(uRef, {
+            ...mUser,
+            statusMessage: "오늘도 열심히!",
+            followers: Math.floor(Math.random() * 50),
+            following: Math.floor(Math.random() * 50),
+            totalPlans: Math.floor(Math.random() * 10),
+            completedGoals: Math.floor(Math.random() * 5)
+        });
+    }
+
+    // 1. Create Active Plans for CURRENT USER (5 items)
     const activeCategories = ['건강관리', '어학', '코딩', '독서', '취미'];
     for(let i=0; i<5; i++) {
         const ref = doc(collection(db, 'plans'));
@@ -505,6 +581,8 @@ export const seedDatabase = async (uid: string) => {
             isPublic: true,
             likes: Math.floor(Math.random() * 100),
             createdAt: now.toISOString(),
+            // ADD IMAGE HERE
+            imageUrl: `https://picsum.photos/seed/plan${i}/800/400`,
             subGoals: [
                 { 
                     id: `sg-${i}-1`, title: "시작이 반이다", description: "첫 걸음 떼기", 
@@ -545,14 +623,26 @@ export const seedDatabase = async (uid: string) => {
         });
     }
 
-    // 3. Create Challenges (5 items)
+    // 3. Create Challenges & Feeds & Chat Messages
     const challengeTitles = [
         "새벽 5시 기상 모임", "매일 책 30페이지 읽기", "영양제 챙겨먹기", 
         "하루 1번 하늘 보기", "주 3회 러닝 크루"
     ];
+    
+    // Store IDs to generate RTDB messages after batch commit
+    const createdChallenges: string[] = [];
+
     for(let i=0; i<5; i++) {
         const ref = doc(collection(db, 'challenges'));
+        const challengeId = ref.id;
+        createdChallenges.push(challengeId);
+
+        // Participants: Current user RANDOMLY joined + 3 random mock users
+        const isJoined = Math.random() > 0.5;
+        const participants = isJoined ? [uid, 'mock-1', 'mock-2'] : ['mock-1', 'mock-2', 'mock-3'];
+        
         batch.set(ref, {
+            id: challengeId,
             title: challengeTitles[i],
             description: "혼자가 힘들다면 함께해요! 서로 인증하고 응원하는 방입니다.",
             statusMessage: "오늘도 화이팅!",
@@ -560,18 +650,60 @@ export const seedDatabase = async (uid: string) => {
             category: activeCategories[i % activeCategories.length],
             tags: ["습관", "함께", "성장"],
             isPublic: true,
-            host: user,
-            participantCount: 10 + Math.floor(Math.random() * 200),
-            participantIds: [uid], // My joined challenge
+            host: isJoined ? user : mockUsers[0],
+            participantCount: participants.length,
+            participantIds: participants, 
             growthRate: Math.floor(Math.random() * 30),
             avgAchievement: 80,
             retentionRate: 90,
             avgTrustScore: 85,
             createdAt: now.toISOString(),
-            // Mock My Page context
-            myAchievementRate: Math.floor(Math.random() * 90),
-            myLastCertifiedAt: new Date(now.getTime() - Math.random() * 86400000 * 5).toISOString().split('T')[0]
+            myAchievementRate: isJoined ? Math.floor(Math.random() * 90) : 0,
+            myLastCertifiedAt: isJoined ? new Date(now.getTime() - Math.random() * 86400000 * 5).toISOString().split('T')[0] : null
         });
+
+        // 3.0 Create Plans for these participants linked to this challenge
+        // This ensures the "Member" tab works and links to a plan
+        for (const pId of participants) {
+            const planRef = doc(collection(db, 'plans'));
+            const pUser = pId === uid ? user : mockUsers.find(m => m.id === pId);
+            if (!pUser) continue;
+
+            batch.set(planRef, {
+                authorId: pId,
+                author: pUser,
+                title: `[${challengeTitles[i]}] 실천 계획`,
+                description: "챌린지 달성을 위해 열심히 하겠습니다!",
+                category: activeCategories[i % activeCategories.length],
+                startDate: new Date().toISOString().split('T')[0],
+                endDate: new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0],
+                progress: Math.floor(Math.random() * 50),
+                isPublic: true,
+                likes: Math.floor(Math.random() * 10),
+                createdAt: new Date().toISOString(),
+                imageUrl: `https://picsum.photos/seed/plan_${pId}_${i}/800/400`,
+                subGoals: [],
+                challengeId: challengeId // LINKING THE PLAN
+            });
+        }
+
+        // 3.1 Create Feeds for this Challenge
+        for(let j=0; j<4; j++) {
+            const feedRef = doc(collection(db, 'feeds'));
+            // Rotate authors
+            const author = j === 0 && isJoined ? user : mockUsers[j % mockUsers.length];
+            
+            batch.set(feedRef, {
+                challengeId: challengeId,
+                user: { id: author.id, nickname: author.nickname, avatarUrl: author.avatarUrl, trustScore: author.trustScore },
+                imageUrl: `https://picsum.photos/seed/feed${i}${j}/400/400`,
+                description: `오늘의 인증입니다! ${j+1}일차 성공했습니다.`,
+                relatedGoalTitle: challengeTitles[i],
+                likes: Math.floor(Math.random() * 20),
+                comments: Math.floor(Math.random() * 5),
+                createdAt: new Date(now.getTime() - Math.random() * 86400000 * (j+1)).toISOString() // Varied dates
+            });
+        }
     }
 
     // 4. Create Scraps (3 items)
@@ -594,15 +726,44 @@ export const seedDatabase = async (uid: string) => {
     batch.update(userRef, {
         totalPlans: (user.totalPlans || 0) + 8,
         completedGoals: (user.completedGoals || 0) + 3,
-        // Reset or boost trust score for demo
         trustScore: 85
     });
 
     await batch.commit();
+
+    // 6. Generate RTDB Chat Messages (After batch commit)
+    for (const challengeId of createdChallenges) {
+        const messagesRef = ref(rtdb, `chats/${challengeId}/messages`);
+        // Add 5-8 dummy messages
+        const msgCount = 5 + Math.floor(Math.random() * 3);
+        const chatContents = [
+            "안녕하세요! 반가워요.", 
+            "오늘 인증 다들 하셨나요?", 
+            "저는 이제 막 인증 올렸습니다 ㅎㅎ", 
+            "내일도 파이팅입니다!", 
+            "질문이 있는데 혹시...", 
+            "사진은 어떻게 찍으시나요?", 
+            "다들 정말 대단하시네요!"
+        ];
+
+        for (let k = 0; k < msgCount; k++) {
+            // Random sender
+            const sender = Math.random() > 0.3 ? mockUsers[Math.floor(Math.random() * mockUsers.length)] : user;
+            
+            await push(messagesRef, {
+                userId: sender.id,
+                userNickname: sender.nickname,
+                userAvatarUrl: sender.avatarUrl,
+                content: chatContents[Math.floor(Math.random() * chatContents.length)],
+                type: 'TEXT',
+                timestamp: Date.now() - (msgCount - k) * 600000 // Spread out by 10 mins
+            });
+        }
+    }
 };
 
 export const clearDatabase = async () => {
-    const collections = ['plans', 'challenges', 'scraps', 'chatRooms', 'users'];
+    const collections = ['plans', 'challenges', 'scraps', 'chatRooms', 'users', 'feeds'];
     
     try {
         for (const colName of collections) {

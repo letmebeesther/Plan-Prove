@@ -140,7 +140,13 @@ export function PlanBoard() {
 
                                 {/* Card Footer */}
                                 <div className="bg-gray-50 p-4 border-t border-gray-100 flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
+                                    <div 
+                                        className="flex items-center gap-2 cursor-pointer hover:opacity-80"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            navigate(`/user/${plan.author.id}`);
+                                        }}
+                                    >
                                         <Avatar src={plan.author.avatarUrl} size="sm" />
                                         <span className="text-xs font-bold text-gray-700 truncate max-w-[100px]">{plan.author.nickname}</span>
                                     </div>

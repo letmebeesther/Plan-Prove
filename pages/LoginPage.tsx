@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Mail, Lock, Eye, EyeOff, Flame, Facebook, User as UserIcon, ArrowRight, AlertCircle, X, CheckCircle2 } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Facebook, User as UserIcon, ArrowRight, AlertCircle, X, CheckCircle2, Flame } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { Input } from '../components/common/Input';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -130,160 +130,184 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-12">
-      <div className="w-full max-w-md animate-fade-up">
-        {/* Brand Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-primary-600 text-white mb-4 shadow-lg shadow-primary-500/30">
-            <Flame className="w-8 h-8 fill-current" />
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Plan & Prove</h1>
-          <p className="text-gray-500 mt-2">
-            당신의 꿈들이 기다리고 있습니다
-          </p>
+    <div className="min-h-screen flex bg-white">
+      {/* Left Side - Hero Image (Desktop) */}
+      <div className="hidden lg:flex lg:w-1/2 bg-slate-900 relative items-center justify-center overflow-hidden">
+        <div className="absolute inset-0 z-0">
+            <img 
+                src="https://images.unsplash.com/photo-1484480974693-6ca0a78fb36b?auto=format&fit=crop&q=80&w=2072" 
+                alt="Login Hero" 
+                className="w-full h-full object-cover opacity-60"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent"></div>
         </div>
+        <div className="relative z-10 text-white p-12 max-w-lg animate-fade-in">
+            <h2 className="text-5xl font-bold mb-6 leading-tight">Plan your goals,<br/>Prove your success.</h2>
+            <p className="text-xl text-slate-300 leading-relaxed">
+                작은 습관이 모여 위대한 성취를 만듭니다.<br/>
+                지금 바로 시작하세요.
+            </p>
+        </div>
+      </div>
 
-        {/* Card */}
-        <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 p-8">
-          {/* Tabs */}
-          <div className="flex p-1 bg-gray-50 rounded-xl mb-8">
-            <button
-              onClick={() => navigate('/login')}
-              className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${
-                !isSignup 
-                  ? 'bg-white text-gray-900 shadow-sm' 
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              로그인
-            </button>
-            <button
-              onClick={() => navigate('/signup')}
-              className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${
-                isSignup 
-                  ? 'bg-white text-gray-900 shadow-sm' 
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              회원가입
-            </button>
-          </div>
-
-          {/* Error Alert */}
-          {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3 animate-fade-in">
-              <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-red-600 font-medium">{error}</p>
+      {/* Right Side - Form */}
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 bg-gray-50 lg:bg-white">
+        <div className="w-full max-w-md animate-fade-up">
+            {/* Brand Logo */}
+            <div className="text-center mb-8">
+            <div className="inline-block mb-4">
+                <div className="w-16 h-16 bg-primary-50 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
+                    <Flame className="w-10 h-10 text-primary-600 fill-primary-600" />
+                </div>
             </div>
-          )}
+            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Plan & Prove</h1>
+            <p className="text-gray-500 mt-2">
+                {isSignup ? '새로운 도전을 시작해보세요' : '당신의 꿈들이 기다리고 있습니다'}
+            </p>
+            </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {isSignup && (
-              <Input
-                label="닉네임"
-                type="text"
-                placeholder="사용할 닉네임을 입력하세요"
-                value={nickname}
-                onChange={(e) => setNickname(e.target.value)}
-                icon={<UserIcon className="w-5 h-5" />}
-                required
-              />
+            {/* Card Content */}
+            <div className="bg-white lg:bg-transparent lg:shadow-none rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 lg:border-none p-8 lg:p-0">
+            {/* Tabs */}
+            <div className="flex p-1 bg-gray-100 rounded-xl mb-8">
+                <button
+                onClick={() => navigate('/login')}
+                className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${
+                    !isSignup 
+                    ? 'bg-white text-gray-900 shadow-sm' 
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+                >
+                로그인
+                </button>
+                <button
+                onClick={() => navigate('/signup')}
+                className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${
+                    isSignup 
+                    ? 'bg-white text-gray-900 shadow-sm' 
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+                >
+                회원가입
+                </button>
+            </div>
+
+            {/* Error Alert */}
+            {error && (
+                <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3 animate-fade-in">
+                <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-red-600 font-medium">{error}</p>
+                </div>
             )}
 
-            <Input
-              label="이메일"
-              type="email"
-              placeholder="name@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              icon={<Mail className="w-5 h-5" />}
-              required
-            />
-
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-body-s font-medium text-gray-700">비밀번호</label>
-                {!isSignup && (
-                  <button 
-                    type="button"
-                    onClick={() => setShowResetModal(true)}
-                    className="text-xs font-semibold text-primary-600 hover:text-primary-700"
-                  >
-                    비밀번호를 잊으셨나요?
-                  </button>
-                )}
-              </div>
-              <div className="relative">
-                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-                  <Lock className="w-5 h-5" />
-                </div>
-                <input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="6자 이상 입력하세요"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-xl border-gray-300 shadow-[0_1px_2px_0_rgba(0,0,0,0.05)] focus:border-primary-500 focus:ring-primary-500 text-body-m py-2.5 pl-10 pr-10 border bg-white"
-                  required
-                  minLength={6}
+            <form onSubmit={handleSubmit} className="space-y-5">
+                {isSignup && (
+                <Input
+                    label="닉네임"
+                    type="text"
+                    placeholder="사용할 닉네임을 입력하세요"
+                    value={nickname}
+                    onChange={(e) => setNickname(e.target.value)}
+                    icon={<UserIcon className="w-5 h-5" />}
+                    required
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                )}
+
+                <Input
+                label="이메일"
+                type="email"
+                placeholder="name@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                icon={<Mail className="w-5 h-5" />}
+                required
+                />
+
+                <div>
+                <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-body-s font-medium text-gray-700">비밀번호</label>
+                    {!isSignup && (
+                    <button 
+                        type="button"
+                        onClick={() => setShowResetModal(true)}
+                        className="text-xs font-semibold text-primary-600 hover:text-primary-700"
+                    >
+                        비밀번호를 잊으셨나요?
+                    </button>
+                    )}
+                </div>
+                <div className="relative">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                    <Lock className="w-5 h-5" />
+                    </div>
+                    <input
+                    type={showPassword ? "text" : "password"}
+                    placeholder="6자 이상 입력하세요"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full rounded-xl border-gray-300 shadow-[0_1px_2px_0_rgba(0,0,0,0.05)] focus:border-primary-500 focus:ring-primary-500 text-body-m py-2.5 pl-10 pr-10 border bg-white"
+                    required
+                    minLength={6}
+                    />
+                    <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                </div>
+                </div>
+
+                <Button 
+                    type="submit" 
+                    fullWidth 
+                    size="lg" 
+                    disabled={isSubmitting}
+                    className="mt-6 flex items-center justify-center gap-2 group shadow-primary-500/25"
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
+                {isSubmitting ? (
+                    <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                    <>
+                        {isSignup ? '계정 만들기' : '로그인'}
+                        <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    </>
+                )}
+                </Button>
+            </form>
+
+            <div className="my-8 flex items-center gap-4">
+                <div className="h-px flex-1 bg-gray-200"></div>
+                <span className="text-xs font-medium text-gray-400">또는</span>
+                <div className="h-px flex-1 bg-gray-200"></div>
             </div>
 
-            <Button 
-                type="submit" 
-                fullWidth 
-                size="lg" 
-                disabled={isSubmitting}
-                className="mt-6 flex items-center justify-center gap-2 group"
-            >
-              {isSubmitting ? (
-                 <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                 <>
-                    {isSignup ? '계정 만들기' : '로그인'}
-                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                 </>
-              )}
-            </Button>
-          </form>
+            <div className="grid grid-cols-2 gap-3">
+                <button 
+                    onClick={handleGoogleLogin}
+                    className="flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors font-medium text-sm text-gray-700 bg-white"
+                >
+                <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5" />
+                Google
+                </button>
+                <button 
+                    onClick={handleFacebookLogin}
+                    className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[#1877F2] text-white rounded-xl hover:bg-[#1864D9] transition-colors font-medium text-sm shadow-md shadow-blue-500/20"
+                >
+                <Facebook className="w-5 h-5 fill-current" />
+                Facebook
+                </button>
+            </div>
+            </div>
 
-          <div className="my-8 flex items-center gap-4">
-            <div className="h-px flex-1 bg-gray-100"></div>
-            <span className="text-xs font-medium text-gray-400">또는</span>
-            <div className="h-px flex-1 bg-gray-100"></div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <button 
-                onClick={handleGoogleLogin}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors font-medium text-sm text-gray-700"
-            >
-              <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5" />
-              Google
-            </button>
-            <button 
-                onClick={handleFacebookLogin}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[#1877F2] text-white rounded-xl hover:bg-[#1864D9] transition-colors font-medium text-sm"
-            >
-              <Facebook className="w-5 h-5 fill-current" />
-              Facebook
-            </button>
-          </div>
+            <p className="text-center mt-8 text-sm text-gray-500">
+            계속 진행하면 Plan & Prove의{' '}
+            <a href="#" className="text-gray-900 font-semibold hover:underline">이용약관</a> 및{' '}
+            <a href="#" className="text-gray-900 font-semibold hover:underline">개인정보처리방침</a>에
+            동의하게 됩니다.
+            </p>
         </div>
-
-        <p className="text-center mt-8 text-sm text-gray-500">
-          계속 진행하면 Plan & Prove의{' '}
-          <a href="#" className="text-gray-900 font-semibold hover:underline">이용약관</a> 및{' '}
-          <a href="#" className="text-gray-900 font-semibold hover:underline">개인정보처리방침</a>에
-          동의하게 됩니다.
-        </p>
       </div>
 
       {/* Reset Password Modal */}

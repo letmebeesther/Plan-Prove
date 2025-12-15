@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Calendar, Users, ArrowRight, Search, Clock, Award, Filter } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -171,10 +172,6 @@ export function Miscellaneous() {
                                     <span className="font-bold text-gray-900 mr-1">{challenge.participants.toLocaleString()}명</span> 참여 중
                                 </div>
                             </div>
-                            
-                            <button className="mt-4 w-full py-2 bg-gray-50 text-gray-600 rounded-xl text-sm font-bold group-hover:bg-primary-600 group-hover:text-white transition-colors flex items-center justify-center gap-1">
-                                참여하기 <ArrowRight className="w-4 h-4" />
-                            </button>
                         </div>
                     </div>
                 ))}

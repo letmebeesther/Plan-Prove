@@ -21,8 +21,8 @@ import { PlanBoard } from './pages/PlanBoard';
 import { UserProfile } from './pages/UserProfile';
 import { ChatPage } from './pages/ChatPage';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { Flame } from 'lucide-react';
 import { initEmailService } from './services/emailService';
+import { Flame } from 'lucide-react';
 
 interface SplashScreenProps {
   onFinish: () => void;
@@ -33,8 +33,10 @@ function SplashScreen({ onFinish, isLoading }: SplashScreenProps) {
   return (
     <div className="fixed inset-0 bg-white z-[9999] flex flex-col items-center justify-center animate-fade-in p-4">
         {/* Changed from animate-bounce to animate-fade-up for a more sincere, steady look */}
-        <div className="bg-primary-50 p-6 rounded-3xl mb-6 animate-fade-up shadow-sm">
-            <Flame className="w-20 h-20 text-primary-600 fill-current" />
+        <div className="mb-6 animate-fade-up flex items-center justify-center">
+            <div className="w-24 h-24 bg-primary-50 rounded-3xl flex items-center justify-center shadow-xl shadow-primary-100">
+                <Flame className="w-14 h-14 text-primary-600 fill-primary-600" />
+            </div>
         </div>
         <h1 className="text-4xl font-bold text-gray-900 mb-2 tracking-tight animate-fade-in" style={{ animationDelay: '0.3s' }}>Plan & Prove</h1>
         <p className="text-gray-500 font-medium text-lg animate-fade-in mb-16 text-center" style={{ animationDelay: '0.6s' }}>도전하고 계획하고 성공하세요</p>
@@ -58,7 +60,7 @@ function SplashScreen({ onFinish, isLoading }: SplashScreenProps) {
 }
 
 // Protected Route Component
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+const ProtectedRoute = ({ children }: { children?: React.ReactNode }) => {
   const { currentUser } = useAuth();
   if (!currentUser) {
     return <Navigate to="/login" replace />;

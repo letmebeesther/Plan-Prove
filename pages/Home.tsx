@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { TrendingUp, Users, ArrowRight, CheckCircle2, Megaphone, Star, Gift, Heart, MessageCircle, Share2, MoreHorizontal, Smile, Trophy, Check, Hash, Flame, Plus, Crown, Medal, AlertCircle, Clock, CheckSquare } from 'lucide-react';
+import { TrendingUp, Users, ArrowRight, CheckCircle2, Megaphone, Star, Gift, Heart, MessageCircle, Share2, MoreHorizontal, Smile, Trophy, Check, Hash, Flame, Plus, Crown, Medal, AlertCircle, Clock, CheckSquare, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Plan, Challenge, Certification } from '../types';
 import { Avatar } from '../components/Avatar';
@@ -43,6 +43,14 @@ const banners = [
     bgClass: 'bg-gradient-to-r from-orange-500 to-pink-600',
     decoration: 'bg-yellow-400/20'
   }
+];
+
+// Ads for Feed
+const FEED_ADS = [
+    { id: 'ad1', text: '🔥 30일 만에 습관 형성? 프리미엄 챌린지 무료 체험하기', link: '#' },
+    { id: 'ad2', text: '👟 나에게 딱 맞는 러닝화 추천받고 10% 할인받기', link: '#' },
+    { id: 'ad3', text: '🥗 건강한 식단 관리, 샐러드 정기배송 특가', link: '#' },
+    { id: 'ad4', text: '💊 활력 충전! 멀티비타민 1+1 이벤트 진행중', link: '#' }
 ];
 
 export function Home() {
@@ -176,14 +184,21 @@ export function Home() {
       const isChallengePost = item.type === 'CHALLENGE_POST';
 
       return (
-          <div key={item.id} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm mb-4 animate-fade-in hover:shadow-md transition-shadow">
+          <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm mb-4 animate-fade-in hover:shadow-md transition-shadow">
               {/* Header */}
               <div className="flex justify-between items-start mb-3">
                   <div className="flex items-center gap-3">
-                      <Avatar src={item.user.avatarUrl} size="md" border />
+                      <div onClick={(e) => { e.stopPropagation(); navigate(`/user/${item.user.id}`) }} className="cursor-pointer">
+                          <Avatar src={item.user.avatarUrl} size="md" border />
+                      </div>
                       <div>
                           <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-gray-900 text-sm">{item.user.nickname}</span>
+                              <span 
+                                  className="font-bold text-gray-900 text-sm cursor-pointer hover:underline"
+                                  onClick={(e) => { e.stopPropagation(); navigate(`/user/${item.user.id}`) }}
+                              >
+                                  {item.user.nickname}
+                              </span>
                               <span className="text-xs text-gray-400">• {formatTimeAgo(item.createdAt)}</span>
                           </div>
                           <div className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
@@ -416,7 +431,10 @@ export function Home() {
                     <div className="absolute bottom-0 left-0 w-full p-4 text-white z-10">
                         <div className="flex items-center gap-2 mb-1">
                             <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded backdrop-blur-md border border-white/10">{item.category}</span>
-                            <span className="text-xs text-white/80 flex items-center gap-1">
+                            <span 
+                                className="text-xs text-white/80 flex items-center gap-1 cursor-pointer hover:text-white"
+                                onClick={(e) => { e.stopPropagation(); navigate(`/user/${item.authorId || 'mock-hof'}`) }}
+                            >
                                 <Avatar src={item.avatarUrl} size="sm" border />
                                 {item.authorName}
                             </span>
@@ -473,10 +491,15 @@ export function Home() {
                             {/* Content */}
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 mb-1">
-                                    <span className="text-[10px] font-bold bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{plan.category}</span>
+                                    <span className="text-xs font-bold bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{plan.category}</span>
                                     <div className="flex items-center gap-1 text-xs text-gray-500">
                                         <span className="text-gray-300">|</span>
-                                        <span>{plan.author.nickname}</span>
+                                        <span 
+                                            className="hover:underline hover:text-gray-700 cursor-pointer"
+                                            onClick={(e) => { e.stopPropagation(); navigate(`/user/${plan.author.id}`) }}
+                                        >
+                                            {plan.author.nickname}
+                                        </span>
                                     </div>
                                 </div>
                                 <h3 className="font-bold text-gray-900 truncate group-hover:text-primary-600 transition-colors">{plan.title}</h3>
@@ -526,14 +549,8 @@ export function Home() {
                     </div>
                     <div className="p-4 flex flex-col flex-1">
                         <h4 className="font-bold text-gray-900 mb-1 truncate">{challenge.title}</h4>
-                        <div className="flex items-center text-xs text-gray-500 mb-4">
+                        <div className="flex items-center text-xs text-gray-500">
                              <Users className="w-3 h-3 mr-1" /> {challenge.participantCount.toLocaleString()}명 참여 중
-                        </div>
-                        
-                        <div className="mt-auto">
-                            <button className="w-full py-2 bg-primary-50 hover:bg-primary-100 text-primary-600 rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-1.5 group-hover:bg-primary-600 group-hover:text-white">
-                                <Plus className="w-3.5 h-3.5" /> 바로 참여하기
-                            </button>
                         </div>
                     </div>
                 </div>
@@ -562,7 +579,7 @@ export function Home() {
           >
               {feedItems.length > 0 ? (
                   <>
-                    {/* Render List with Dynamic Divider */}
+                    {/* Render List with Dynamic Divider & Ad */}
                     {(() => {
                         let dividerShown = false;
                         return feedItems.map((item, idx) => {
@@ -571,6 +588,11 @@ export function Home() {
                             if (showDivider) {
                                 dividerShown = true;
                             }
+
+                            // Ad Logic: Every 3 items
+                            const showAd = (idx + 1) % 3 === 0;
+                            const adIndex = Math.floor((idx + 1) / 3) - 1;
+                            const ad = FEED_ADS[adIndex % FEED_ADS.length];
 
                             return (
                                 <React.Fragment key={item.id}>
@@ -591,6 +613,17 @@ export function Home() {
                                         </div>
                                     )}
                                     {renderFeedItem(item)}
+                                    {showAd && (
+                                        <div className="rounded-xl bg-gray-50 border border-gray-100 py-3 px-4 flex items-center justify-between group cursor-pointer hover:bg-gray-100 transition-all mb-4">
+                                            <div className="flex items-center gap-3 overflow-hidden">
+                                                <span className="flex-shrink-0 text-[10px] font-bold text-gray-400 border border-gray-300 px-1.5 py-0.5 rounded">AD</span>
+                                                <span className="text-xs text-gray-600 truncate font-medium group-hover:text-primary-600 transition-colors">
+                                                    {ad.text}
+                                                </span>
+                                            </div>
+                                            <ExternalLink className="w-3 h-3 text-gray-400 flex-shrink-0 group-hover:text-primary-500" />
+                                        </div>
+                                    )}
                                 </React.Fragment>
                             );
                         });
